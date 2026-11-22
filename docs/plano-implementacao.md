@@ -110,7 +110,7 @@ POST /v1/translate        multipart: images[] (uma ou várias, em ordem, para ti
 POST /v1/lookup           JSON: { image_sha256s, options } → mesmo formato ou 404 (sem reenviar a imagem)
 POST /v1/translate-text   JSON: { texts, source_lang (aceita "auto"), target_lang, context? }
   → { translations, detected_lang }
-GET  /v1/health           → { status, gpu_name, models_loaded, translator }
+GET  /v1/health           → { status, gpu_name, models_loaded, translator, pipeline_version }
 ```
 
 - `polygon` usa pixels da imagem original; o cliente converte para a escala exibida.
@@ -184,6 +184,11 @@ A UI da extensão foi desenhada no canvas "KMOverlay Translate — UX/UI" e impl
 
 **Pronto quando:** os testes de API passarem, incluindo os casos de erro, e a segunda chamada vier do cache.
 
+**Andamento (22/11/2026):**
+- Feito: fila com prioridade (página visível antes de pré-carga; `429` com mais de 16 pedidos esperando; pedido cujo cliente desistiu antes da vez é descartado) e cache em disco com descarte LRU (`~/.cache/kmoverlay-translate`, 1 GB por padrão; `KMOVERLAY_CACHE_DIR` e `KMOVERLAY_CACHE_MAX_MB`), que sobrevive a reinícios.
+- Diferente do plano: um cache só, da resposta inteira, em vez de um por etapa. A versão do pipeline na chave já inclui leitor, modelo e versão do prompt, então nada antigo volta depois de uma mudança; o cache por etapa fica para quando a renderização mudar com frequência.
+- O `/v1/health` informa a versão do pipeline, que a extensão usa para saber se o seu cache está velho.
+
 ### Fase 3: extensão de imagens
 
 - Content script nos sites ligados, montando os componentes de página da UI.
@@ -197,6 +202,11 @@ A UI da extensão foi desenhada no canvas "KMOverlay Translate — UX/UI" e impl
 - `MutationObserver` para imagens que entram por lazy-load.
 
 **Pronto quando:** os sites nomeados forem traduzidos no Chrome e no Firefox e, ao voltar, a tradução vier do cache.
+
+**Andamento (22/11/2026):**
+- Feito (no esqueleto da Fase 0): content script registrado por site, fila por proximidade, camadas sobre as imagens, Alt+T, badge e progresso no popup.
+- Feito: cache no IndexedDB (200 MB, descarte LRU; metadados separados das imagens para o descarte não carregar imagens). Uma página guardada aparece sem chamar o servidor quando ele tem a mesma versão do pipeline, e também com o servidor desligado. A seção Cache das opções mostra tamanho e número de páginas.
+- Falta: imagens de fundo via CSS, SVG e `<canvas>`; agrupamento das tiras de webtoon; fontes do design dentro das camadas; testes nos sites nomeados.
 
 ### Fase 4: texto da página (fecha o MVP)
 
