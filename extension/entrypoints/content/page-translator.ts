@@ -38,6 +38,8 @@ interface TrackedImage {
   near: boolean;
   visible: boolean;
   translatedImage: string | null;
+  /** Why the last translation failed, shown as the tooltip of the error pill. */
+  errorReason: string | null;
   request: TranslationHandle | null;
   removeListeners(): void;
 }
@@ -84,7 +86,7 @@ export function createPageTranslator(host: string, dependencies: PageTranslatorD
       case 'translated':
         return { kind: 'translated', showingOriginal };
       case 'error':
-        return { kind: 'error' };
+        return { kind: 'error', reason: item.errorReason ?? undefined };
     }
   }
 
@@ -151,6 +153,7 @@ export function createPageTranslator(host: string, dependencies: PageTranslatorD
           item.translatedImage = result.imageDataUrl;
         } else {
           item.status = 'error';
+          item.errorReason = result.reason;
         }
         pump();
       },
@@ -211,6 +214,7 @@ export function createPageTranslator(host: string, dependencies: PageTranslatorD
       near: false,
       visible: false,
       translatedImage: null,
+      errorReason: null,
       request: null,
       removeListeners: () => {
         element.removeEventListener('mouseenter', showControls);

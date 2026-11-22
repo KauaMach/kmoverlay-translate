@@ -137,6 +137,8 @@ describe('createPageTranslator', () => {
     translations[0]?.finish({ state: 'error', reason: 'Servidor não encontrado.' });
     const [layer] = layers();
     expect(overlayText(layer!)).toContain('Falhou');
+    const errorPill = layer!.shadowRoot?.querySelector('div')?.shadowRoot?.querySelector('.error');
+    expect(errorPill?.getAttribute('title')).toBe('Servidor não encontrado.');
 
     const overlayRoot = layer!.shadowRoot?.querySelector('div')?.shadowRoot;
     const retryButton = [...(overlayRoot?.querySelectorAll('button') ?? [])].find((button) =>

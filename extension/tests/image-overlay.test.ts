@@ -189,6 +189,14 @@ describe('createImageOverlay', () => {
     expect(onRetry).toHaveBeenCalledOnce();
   });
 
+  it('keeps the failure reason as the tooltip of the error pill', () => {
+    overlay.setState({ kind: 'error', reason: 'O Ollama não está rodando em http://127.0.0.1:11434.' });
+    expect(errorPill().getAttribute('title')).toBe('O Ollama não está rodando em http://127.0.0.1:11434.');
+
+    overlay.setState({ kind: 'error' });
+    expect(errorPill().hasAttribute('title')).toBe(false);
+  });
+
   it('hides the error pill when a new state arrives', () => {
     overlay.setState({ kind: 'error' });
     overlay.setState({ kind: 'queued', position: 1 });

@@ -15,7 +15,8 @@ export type ImageOverlayState =
   | { kind: 'queued'; position: number }
   | { kind: 'translating'; queuePosition?: number }
   | { kind: 'translated'; showingOriginal: boolean }
-  | { kind: 'error' };
+  /** `reason` (e.g. "O Ollama não está rodando…") shows as the tooltip of the pill. */
+  | { kind: 'error'; reason?: string };
 
 /** Actions the reader can take from the overlay. */
 export interface ImageOverlayCallbacks {
@@ -83,6 +84,12 @@ export function createImageOverlay(callbacks: ImageOverlayCallbacks): ImageOverl
   const setState = (state: ImageOverlayState): void => {
     progressPill.show(describeProgress(state));
     errorPill.hidden = state.kind !== 'error';
+    // The design shows only "Falhou"; the reason stays one hover away.
+    if (state.kind === 'error' && state.reason) {
+      errorPill.title = state.reason;
+    } else {
+      errorPill.removeAttribute('title');
+    }
     translatedControl.element.hidden = state.kind !== 'translated';
     if (state.kind === 'translated') {
       translatedControl.setShowingOriginal(state.showingOriginal);
