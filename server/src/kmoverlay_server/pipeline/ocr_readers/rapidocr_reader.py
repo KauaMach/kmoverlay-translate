@@ -47,6 +47,10 @@ class RapidOcrReader:
         self._engine: Callable[[np.ndarray], Any] | None = None
         self._lock = Lock()
 
+    def warm_up(self) -> None:
+        """Loads the OCR models now instead of on the first page."""
+        self._get_engine()
+
     def read(self, image: Image.Image) -> list[TextLine]:
         """Reads the whole image, tile by tile when it is tall."""
         engine = self._get_engine()

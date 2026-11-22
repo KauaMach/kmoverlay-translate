@@ -53,3 +53,7 @@ class PagePipeline(Protocol):
     ) -> list[PageResult]:
         """Returns one result per image, in the same order."""
         ...
+
+    def warm_up(self) -> None:
+        """Loads every model now, so the first page does not wait for them."""
+        ...

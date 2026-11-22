@@ -50,6 +50,9 @@ class DemoPipeline:
             self._sleep(self._delay_seconds)
         return [self._mark(image, options.render_image) for image in images]
 
+    def warm_up(self) -> None:
+        """Nothing to load."""
+
     def _mark(self, image: Image.Image, render_image: bool) -> PageResult:
         banner_height = _banner_height(image.height)
         region = TranslatedRegion(

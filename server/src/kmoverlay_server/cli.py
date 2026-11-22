@@ -1,6 +1,7 @@
 """Command line: `kmoverlay serve` starts the server, `kmoverlay translate` translates one image."""
 
 import argparse
+import logging
 import os
 import sys
 import time
@@ -38,6 +39,7 @@ SOURCE_CHOICES = ("en", "ja", "ko", "zh", "es", "ru")
 TARGET_CHOICES = ("pt-BR", "en", "es")
 DIRECTION_CHOICES = ("ltr", "rtl", "strip")
 MILLISECONDS_PER_SECOND = 1000
+LOG_FORMAT = "%(levelname)s:     %(message)s"
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -90,6 +92,10 @@ def serve_command(env_file: Path) -> int:
     except SettingsError as error:
         print(f"Configuração inválida: {error}.", file=sys.stderr)
         return EXIT_CONFIGURATION_ERROR
+    # Same style as uvicorn's lines, so the warm-up messages read as part of the server log.
+    logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
+    # httpx logs every call to Ollama at INFO, one line per page: only its warnings matter.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     app = create_app(settings, create_server_pipeline(settings))
     uvicorn.run(app, host=settings.host, port=settings.port)
     return EXIT_OK
@@ -99,7 +105,11 @@ def create_server_pipeline(settings: ServerSettings) -> PagePipeline:
     """The pipeline chosen in `KMOVERLAY_PIPELINE`: the real one, or the demonstration one."""
     if settings.pipeline == "demo":
         return DemoPipeline(settings.demo_delay_ms)
-    translator = OllamaTranslator(base_url=settings.ollama_url, model=settings.ollama_model)
+    translator = OllamaTranslator(
+        base_url=settings.ollama_url,
+        model=settings.ollama_model,
+        keep_alive=settings.ollama_keep_alive,
+    )
     return TranslationPipeline(RapidOcrReader(), translator)
 
 

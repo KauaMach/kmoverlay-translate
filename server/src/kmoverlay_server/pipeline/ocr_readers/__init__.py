@@ -14,6 +14,10 @@ class TextReader(Protocol):
     name: str
     """Part of the pipeline version (and so of the cache keys)."""
 
+    def warm_up(self) -> None:
+        """Loads the models now, so the first page does not wait for them."""
+        ...
+
     def read(self, image: Image.Image) -> Sequence[TextLine]:
         """Lines in pixels of `image`, in no particular order."""
         ...

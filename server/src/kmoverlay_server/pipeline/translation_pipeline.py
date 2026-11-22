@@ -43,6 +43,15 @@ class TranslationPipeline:
             return _split(joined, [image.height for image in images])
         return self._translate_pages(images, options)
 
+    def warm_up(self) -> None:
+        """Loads the OCR and the translation model.
+
+        Raises:
+            TranslatorError: when the translator is unreachable.
+        """
+        self._reader.warm_up()
+        self._translator.warm_up()
+
     def _translate_pages(
         self, images: Sequence[Image.Image], options: PipelineOptions
     ) -> list[PageResult]:

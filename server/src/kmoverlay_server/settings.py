@@ -5,7 +5,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from kmoverlay_server.pipeline.translators.ollama import DEFAULT_OLLAMA_MODEL, DEFAULT_OLLAMA_URL
+from kmoverlay_server.pipeline.translators.ollama import (
+    DEFAULT_KEEP_ALIVE,
+    DEFAULT_OLLAMA_MODEL,
+    DEFAULT_OLLAMA_URL,
+)
 
 TOKEN_VARIABLE = "KMOVERLAY_TOKEN"
 HOST_VARIABLE = "KMOVERLAY_HOST"
@@ -15,6 +19,7 @@ DEMO_DELAY_VARIABLE = "KMOVERLAY_DEMO_DELAY_MS"
 PIPELINE_VARIABLE = "KMOVERLAY_PIPELINE"
 OLLAMA_URL_VARIABLE = "KMOVERLAY_OLLAMA_URL"
 OLLAMA_MODEL_VARIABLE = "KMOVERLAY_OLLAMA_MODEL"
+OLLAMA_KEEP_ALIVE_VARIABLE = "KMOVERLAY_OLLAMA_KEEP_ALIVE"
 
 PipelineName = Literal["translate", "demo"]
 PIPELINE_NAMES: tuple[PipelineName, ...] = ("translate", "demo")
@@ -49,6 +54,8 @@ class ServerSettings:
     """`translate` reads and translates; `demo` only marks the images (no models needed)."""
     ollama_url: str = DEFAULT_OLLAMA_URL
     ollama_model: str = DEFAULT_OLLAMA_MODEL
+    ollama_keep_alive: str = DEFAULT_KEEP_ALIVE
+    """How long Ollama keeps the model in memory after the last page (e.g. `30m`, `2h`)."""
     demo_delay_ms: int = DEFAULT_DEMO_DELAY_MS
     max_image_bytes: int = MAX_IMAGE_BYTES
     max_image_pixels: int = MAX_IMAGE_PIXELS
@@ -88,6 +95,8 @@ def load_settings(environment: Mapping[str, str]) -> ServerSettings:
         pipeline=_read_pipeline(environment.get(PIPELINE_VARIABLE)),
         ollama_url=environment.get(OLLAMA_URL_VARIABLE, "").strip() or DEFAULT_OLLAMA_URL,
         ollama_model=environment.get(OLLAMA_MODEL_VARIABLE, "").strip() or DEFAULT_OLLAMA_MODEL,
+        ollama_keep_alive=environment.get(OLLAMA_KEEP_ALIVE_VARIABLE, "").strip()
+        or DEFAULT_KEEP_ALIVE,
         demo_delay_ms=_read_non_negative_int(
             DEMO_DELAY_VARIABLE, environment.get(DEMO_DELAY_VARIABLE), DEFAULT_DEMO_DELAY_MS
         ),
