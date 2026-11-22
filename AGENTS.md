@@ -189,6 +189,9 @@ uv sync
 # rodar (http://127.0.0.1:8000; leitor de demonstração em /demo)
 uv run kmoverlay serve
 
+# traduzir uma imagem sem servidor nem extensão (--translator none mantém o texto original)
+uv run kmoverlay translate pagina.png -o traduzida.png
+
 # testes
 uv run pytest
 
@@ -221,4 +224,5 @@ samples/                 # páginas reais de teste, fora do git
 - Recursos de fases futuras ficam escondidos na interface até existirem.
 - Páginas reais de teste ficam em `samples/` e nunca vão para o git.
 - Todo endpoint `/v1` do servidor exige o token; o servidor não envia cabeçalhos CORS e só responde aos nomes de `Host` permitidos.
-- Até a Fase 1, o servidor usa o pipeline de demonstração (`DemoPipeline`), que só marca as imagens.
+- O servidor usa o pipeline real (OCR com RapidOCR + tradução com Ollama). Com `KMOVERLAY_PIPELINE=demo` ele volta ao pipeline de demonstração, que só marca as imagens e não precisa de modelos.
+- Textos lidos das páginas nunca vão para os logs.
