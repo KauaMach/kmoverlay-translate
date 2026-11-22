@@ -1,0 +1,177 @@
+/* Overlay drawn over a comic image on a web page (design "Estados da imagem").
+   Lives in a shadow root, so the reset below keeps page styles from leaking in. */
+:host {
+  all: initial;
+  position: absolute;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Every state element sets its own display, which would otherwise beat `hidden`. */
+[hidden] {
+  display: none !important;
+}
+
+svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+button {
+  margin: 0;
+  border: 0;
+  cursor: pointer;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Progress pill ("Na fila", "Traduzindo"). It stays in the tree while empty so
+   screen readers keep tracking it as a live region between states. */
+.progress {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transform: translateX(-50%);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.progress--queued,
+.progress--translating {
+  padding: 6px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+  color: var(--color-text-soft);
+}
+
+.progress--translating {
+  border-color: var(--color-info-border);
+  color: var(--color-info-text);
+}
+
+.spinner {
+  animation: overlay-spin 800ms linear infinite;
+}
+
+@keyframes overlay-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Error pill. It catches pointer events so a click that misses the button does
+   not reach the image (readers often turn the page on image clicks). */
+.error {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 12px;
+  border: 1px solid var(--color-danger-border);
+  border-radius: 18px;
+  background: var(--color-danger-surface);
+  color: var(--color-danger-text);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+.error__retry {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 14px;
+  background: var(--color-danger-text);
+  color: var(--color-surface);
+  font: inherit;
+}
+
+/* Translation/original control. Hidden with opacity (not `visibility`) so it
+   stays focusable for keyboard users, and without pointer events so it never
+   blocks the art while invisible. */
+.control {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 18px;
+  background: var(--color-ink);
+  font-family: var(--font-body);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.control--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.control__badge {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 0 2px 0 3px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: var(--color-surface);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.control__segment {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 15px;
+  background: transparent;
+  color: var(--color-on-dark-muted);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.control__segment[aria-pressed='true'] {
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
+.control__hint {
+  padding: 0 8px 0 4px;
+  color: var(--color-text-faint);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+
+  .control {
+    transition: none;
+  }
+}
