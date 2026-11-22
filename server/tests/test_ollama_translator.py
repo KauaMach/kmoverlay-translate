@@ -8,6 +8,7 @@ import pytest
 from kmoverlay_server.pipeline.translators import TranslationRequest, TranslatorError
 from kmoverlay_server.pipeline.translators.ollama import (
     DEFAULT_KEEP_ALIVE,
+    PROMPT_VERSION,
     OllamaTranslator,
     build_messages,
     parse_translations,
@@ -177,3 +178,10 @@ def test_other_targets_get_no_brazilian_rules() -> None:
     assert '"tá"' not in messages[0]["content"]
     assert "Spanish" in messages[0]["content"]
     assert len(messages) == 2
+
+
+def test_the_version_changes_with_the_model_and_the_prompt() -> None:
+    translator = OllamaTranslator(model=MODEL)
+
+    assert translator.name == f"ollama:{MODEL}"
+    assert translator.version == f"ollama:{MODEL}:prompt-{PROMPT_VERSION}"

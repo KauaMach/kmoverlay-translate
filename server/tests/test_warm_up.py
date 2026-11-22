@@ -47,6 +47,7 @@ class RecordingReader:
 
 class RecordingTranslator:
     name = "recording"
+    version = "recording"
 
     def __init__(self, events: list[str]) -> None:
         self._events = events

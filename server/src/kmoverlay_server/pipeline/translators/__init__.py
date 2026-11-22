@@ -32,7 +32,11 @@ class Translator(Protocol):
     """Translates segments (balloons) in one call, keeping their number and order."""
 
     name: str
-    """Part of the pipeline version, so each translator has its own cache entries."""
+    """Shown to the user, e.g. `ollama:gemma3:4b`."""
+
+    version: str
+    """Part of the pipeline version: changes with the model and the prompt, so caches
+    never serve translations made by an older setup."""
 
     def translate(self, segments: Sequence[str], request: TranslationRequest) -> list[str]:
         """One translation per segment, in the same order.

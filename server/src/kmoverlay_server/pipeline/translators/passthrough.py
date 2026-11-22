@@ -11,6 +11,7 @@ class PassthroughTranslator:
     """Returns every segment unchanged."""
 
     name = PASSTHROUGH_NAME
+    version = PASSTHROUGH_NAME
 
     def translate(self, segments: Sequence[str], request: TranslationRequest) -> list[str]:
         return list(segments)

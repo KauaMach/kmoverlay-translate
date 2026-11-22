@@ -21,6 +21,7 @@ class NumberingTranslator:
     """Fake translator that answers "TRADUÇÃO 1", "TRADUÇÃO 2"… and records its calls."""
 
     name = "numbering"
+    version = "numbering"
 
     def __init__(self) -> None:
         self.calls: list[list[str]] = []

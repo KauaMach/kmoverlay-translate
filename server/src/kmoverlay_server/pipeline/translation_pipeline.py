@@ -32,7 +32,7 @@ class TranslationPipeline:
     @property
     def version(self) -> str:
         """Changes when the reader or the translator changes, so caches never mix them."""
-        return f"{PIPELINE_VERSION}+{self._reader.name}+{self._translator.name}"
+        return f"{PIPELINE_VERSION}+{self._reader.name}+{self._translator.version}"
 
     def translate(
         self, images: Sequence[Image.Image], options: PipelineOptions

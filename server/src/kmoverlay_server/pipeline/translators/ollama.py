@@ -17,6 +17,8 @@ DEFAULT_KEEP_ALIVE = "30m"
 REQUEST_TIMEOUT_SECONDS = 180.0
 # Low temperature: the same balloon should get the same translation.
 TEMPERATURE = 0.2
+# Raised whenever the prompt or the examples change (see docs/benchmark-fase-0.md).
+PROMPT_VERSION = 2
 HTTP_NOT_FOUND = 404
 
 SYSTEM_PROMPT = """You are a professional comic book translator. Translate the speech balloons
@@ -73,6 +75,7 @@ class OllamaTranslator:
         client: httpx.Client | None = None,
     ) -> None:
         self.name = f"ollama:{model}"
+        self.version = f"{self.name}:prompt-{PROMPT_VERSION}"
         self._base_url = base_url
         self._model = model
         self._keep_alive = keep_alive
