@@ -35,13 +35,15 @@ Plano para construir a extensão de tradução de imagens e texto descrita em [e
    - IndexedDB (no background, origem da extensão) e disco têm teto de tamanho e descarte LRU.
    - Imagens sem texto também são cacheadas, para não serem reenviadas a cada rolagem.
    - O hash é calculado antes de qualquer recompressão (ex.: WebP no celular).
-4. **Tradução.** O modelo é escolhido na Fase 0; a interface é a mesma para todos: segmentos + contexto → segmentos. Candidatos:
+4. **Tradução.** Ollama e NLLB ficam os dois no projeto, como implementações da mesma interface (segmentos + contexto → segmentos), e o usuário escolhe qual usar nas opções da extensão. A Fase 0 define qual é o padrão. Candidatos:
    - LLM de 3 a 4B via Ollama, traduzindo a página inteira numa chamada, com saída validada por JSON schema (suportado desde a versão 0.5.0, confirmado). Dá contexto ao modelo e reduz chamadas.
    - NLLB 600M ou 1.3B em int8 via CTranslate2 (≈0,6 e ≈1,4 GB). Traduz direto entre todos os idiomas do escopo, mas frase por frase. Em fp16 o 1.3B (≈2,7 GB) não é mais leve que um LLM de 3 a 4B. Licença CC-BY-NC, compatível com uso pessoal.
    - Argos en→pb (direto, confirmado), a opção mais leve para inglês.
    - A licença de cada modelo fica registrada; alguns Qwen pequenos têm licença restrita (verificar).
+   - **Um tradutor por vez:** o servidor mantém no máximo um carregado e descarrega o atual antes de carregar outro (no Ollama, com `keep_alive: 0` (verificar)). A troca espera as traduções em andamento terminarem e leva alguns segundos.
+   - A escolha vai em cada pedido como opção `translator`; o servidor troca quando ela muda, entra na chave do cache (as traduções de cada um não se misturam) e aparece em `/v1/health`. Na CLI, a mesma escolha é `--translator`, usada no benchmark.
 5. **VRAM e stack de IA.**
-   - Detecção (comic-text-detector em ONNX), OCR (RapidOCR, que roda os modelos do PaddleOCR em ONNX Runtime sem o PaddlePaddle) e LaMa (ONNX, entrada fixa de 512×512, aplicado por recorte) rodam em ONNX Runtime, primeiro na CPU e na GPU só se for preciso.
+   - Detecção (por enquanto a do próprio RapidOCR; o comic-text-detector em ONNX entra como alternativa no benchmark da Fase 0, porque exige reproduzir o pré e o pós-processamento do modelo), OCR (RapidOCR, que roda os modelos do PaddleOCR em ONNX Runtime sem o PaddlePaddle) e LaMa (ONNX, entrada fixa de 512×512, aplicado por recorte) rodam em ONNX Runtime, primeiro na CPU e na GPU só se for preciso.
    - A GPU fica para o Ollama, com `keep_alive` longo (o padrão descarrega o modelo após 5 minutos parado).
    - O MVP não usa PyTorch; ele só entra com o manga-ocr (japonês, Fase 5). PaddlePaddle GPU e PyTorch fixam versões diferentes das bibliotecas CUDA e quebram um ao outro no mesmo ambiente (relatado em issues).
    - A Fase 0 tem um teste de ir/não ir: tudo carregado ao mesmo tempo, com o pico de VRAM medido.
@@ -99,7 +101,8 @@ Todos os endpoints exigem `Authorization: Bearer <token>`.
 ```
 POST /v1/translate        multipart: images[] (uma ou várias, em ordem, para tiras) + options (JSON)
   options = { source_lang, target_lang, reading_direction: ltr | rtl | strip,
-              output: image | regions, priority: visible | prefetch, series_id? }
+              output: image | regions, priority: visible | prefetch, series_id?,
+              translator: ollama | nllb }
   → { pipeline_version,
       results: [{ image_sha256, image_webp_base64?,
                   regions: [{ polygon, source_text, translated_text }] }],
@@ -107,7 +110,7 @@ POST /v1/translate        multipart: images[] (uma ou várias, em ordem, para ti
 POST /v1/lookup           JSON: { image_sha256s, options } → mesmo formato ou 404 (sem reenviar a imagem)
 POST /v1/translate-text   JSON: { texts, source_lang (aceita "auto"), target_lang, context? }
   → { translations, detected_lang }
-GET  /v1/health           → { status, gpu_name, models_loaded }
+GET  /v1/health           → { status, gpu_name, models_loaded, translator }
 ```
 
 - `polygon` usa pixels da imagem original; o cliente converte para a escala exibida.
@@ -121,7 +124,7 @@ GET  /v1/health           → { status, gpu_name, models_loaded }
 A UI da extensão foi desenhada no canvas "KMOverlay Translate — UX/UI" e implementada antes da Fase 0: popup, página de opções e componentes de página. O content script que liga esses componentes à fila entra na Fase 3.
 
 - **Popup:** status do servidor (Conectado/Offline), site atual com "Ativo neste site" e os switches de imagens e texto, idiomas De → Para, progresso do capítulo e botão de alternar original e tradução. Offline, mostra o endereço, o comando para subir o servidor e o que continua funcionando pelo cache.
-- **Opções:** Servidor (endereço, token, testar conexão), Idiomas, Sites, Tradução, Atalhos e Cache. Salvamento automático.
+- **Opções:** Servidor (endereço, token, testar conexão), Idiomas, Sites, Tradução, Atalhos e Cache. Salvamento automático. A seção Tradução ganha o campo "Tradutor" (Ollama ou NLLB), que não está no canvas original.
 - **Na imagem:** estados "na fila", "traduzindo", "traduzida" (controles Tradução/Original só ao passar o mouse) e "erro" (com "Tentar de novo"). Os indicadores ficam no topo da imagem, sem cobrir os balões.
 - **No celular:** botão flutuante "KM" com menu (status, mostrar original, pausar no site, abrir painel).
 - **Atalhos:** Alt+T alterna original e tradução; Alt+Shift+K liga ou desliga no site atual; Alt+Shift+C captura a área visível (Fase 8).
@@ -164,6 +167,10 @@ A UI da extensão foi desenhada no canvas "KMOverlay Translate — UX/UI" e impl
 - Testes com imagens sintéticas e tradutor falso, sem GPU.
 
 **Pronto quando:** a CLI atingir as metas da Fase 0 no conjunto anotado.
+
+**Andamento (22/11/2026):**
+- Feito: OCR com RapidOCR (modelos PP-OCRv6 que vêm no pacote, ~1 s por página na CPU), leitura de imagens altas em blocos com sobreposição, filtro de desenhos lidos como letras, agrupamento das linhas em balões e ordem de leitura (`ltr`, `rtl`, `strip`), tiras juntadas e divididas de volta, apagamento pela máscara das letras com a cor do balão, escrita com Comic Neue Bold (OFL, com acentos) na área do balão, tradutor Ollama com JSON schema e fallback balão por balão, CLI `kmoverlay translate` e o servidor usando esse pipeline (`KMOVERLAY_PIPELINE=demo` volta ao de demonstração).
+- Falta: testar com o Ollama instalado, o NLLB e a escolha do tradutor nas opções, e medir contra as metas da Fase 0.
 
 ### Fase 2: servidor HTTP
 
@@ -255,6 +262,7 @@ A UI da extensão foi desenhada no canvas "KMOverlay Translate — UX/UI" e impl
 ## Decisões tomadas
 
 - **Pipeline próprio** seguindo o contrato acima; manga-image-translator só como referência.
+- **Dois tradutores, Ollama e NLLB**, com a escolha nas opções da extensão e só um carregado por vez.
 - **Licença GPL-3.0.**
 - **UI da extensão em TypeScript puro**, com as fontes Inter e Space Grotesk embutidas (OFL), sem requisições externas.
 - **Dependências aprovadas:**
