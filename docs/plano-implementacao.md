@@ -147,7 +147,9 @@ A UI da extensão foi desenhada no canvas "KMOverlay Translate — UX/UI" e impl
 **Andamento (22/11/2026):** o esqueleto existe.
 - Servidor: contrato da API (`/v1/health`, `/v1/translate`, `/v1/lookup`) com token, checagem de `Host`, limites de tamanho e cache em memória; pipeline de demonstração que só marca as imagens; leitor de demonstração em `/demo`, com HQs sintéticas geradas no código.
 - Extensão: content script registrado só nos sites ligados (a permissão é pedida no popup), fila por proximidade da tela, camada isolada sobre cada imagem com os estados do design, Alt+T, badge com a fila e progresso no popup. O background baixa as imagens, consulta `/v1/lookup` e envia a `/v1/translate`.
-- Conferido no Firefox (sem extensão instalada, com as APIs simuladas) que as camadas ficam sobre as imagens reais. Falta: testar a extensão instalada no Chrome e no Firefox, os sites reais (decisão em aberto), `Referer`, `blob:`, Local Network Access e mixed content; e o benchmark de modelos.
+- Conferido no Firefox (sem extensão instalada, com as APIs simuladas) que as camadas ficam sobre as imagens reais.
+- Tradução comparada em [benchmark-fase-0.md](benchmark-fase-0.md): gemma3:4b com o prompt v2 é o padrão (chrF 65,6 contra 50,3 do qwen3:4b, ~1,4 s por página).
+- Falta: testar a extensão instalada no Chrome e no Firefox, os sites reais (decisão em aberto), `Referer`, `blob:`, Local Network Access e mixed content; OCR e detecção num conjunto anotado; o NLLB.
 
 **Pronto quando:**
 - o modelo de tradução estiver escolhido;
@@ -170,7 +172,8 @@ A UI da extensão foi desenhada no canvas "KMOverlay Translate — UX/UI" e impl
 
 **Andamento (22/11/2026):**
 - Feito: OCR com RapidOCR (modelos PP-OCRv6 que vêm no pacote, ~1 s por página na CPU), leitura de imagens altas em blocos com sobreposição, filtro de desenhos lidos como letras, agrupamento das linhas em balões e ordem de leitura (`ltr`, `rtl`, `strip`), tiras juntadas e divididas de volta, apagamento pela máscara das letras com a cor do balão, escrita com Comic Neue Bold (OFL, com acentos) na área do balão, tradutor Ollama com JSON schema e fallback balão por balão, CLI `kmoverlay translate` e o servidor usando esse pipeline (`KMOVERLAY_PIPELINE=demo` volta ao de demonstração).
-- Falta: testar com o Ollama instalado, o NLLB e a escolha do tradutor nas opções, e medir contra as metas da Fase 0.
+- Feito depois: tradução real testada com o Ollama (gemma3:4b), prompt v2, e pré-carregamento do OCR e do modelo quando o servidor sobe (a primeira página caiu de ~53 s para ~2 s; `KMOVERLAY_OLLAMA_KEEP_ALIVE` define quanto tempo o modelo fica na memória).
+- Falta: o NLLB e a escolha do tradutor nas opções, e medir contra as metas da Fase 0.
 
 ### Fase 2: servidor HTTP
 
