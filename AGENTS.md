@@ -70,7 +70,8 @@ Se uma regra impedir a tarefa ou parecer errada para o caso, avise em vez de ign
 | Variáveis de ambiente | `UPPER_SNAKE_CASE` | `DATABASE_URL` |
 
 - Sem espaços, acentos ou cedilha em nomes de arquivos e pastas.
-- Código, identificadores, comentários e mensagens de commit em inglês.
+- Código, identificadores e comentários em inglês.
+- Mensagens de commit em português do Brasil (veja a seção 10).
 - Documentação (README, `docs/`) no idioma já usado no projeto; na falta de padrão, em português.
 - Em outras linguagens, siga a convenção oficial (ex.: PEP 8 em Python, Effective Go, convenções do Java).
 - Se o projeto já usa outro padrão, mantenha o do projeto.
@@ -114,8 +115,8 @@ Pergunte antes de:
 - Mensagens no padrão Conventional Commits: `tipo(escopo): descrição`.
 - Tipos: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`.
 - Mudança incompatível: `!` após o tipo (`feat!:`) ou rodapé `BREAKING CHANGE:`.
-- Descrição curta, no imperativo, em inglês e sem ponto final. Ex.: `feat(api): add image upload endpoint`.
-- Commits pequenos e atômicos: uma mudança lógica por commit.
+- Tipo e escopo seguem o padrão, em inglês. A descrição fica em português do Brasil: curta, no presente ("adiciona", "corrige") e sem ponto final. Ex.: `feat(api): adiciona endpoint de upload de imagem`.
+- Commits pequenos e atômicos: uma mudança lógica por commit. Não misture mudanças sem relação entre si (ex.: refatoração e funcionalidade nova, ou código e documentação de outro assunto); separe em commits diferentes.
 - Branches no formato `tipo/descricao-curta`. Ex.: `feat/image-cache`, `fix/ocr-timeout`.
 - Não inclua em commits dependências (`node_modules`, `.venv`), arquivos gerados ou segredos, salvo se o projeto já fizer isso de propósito.
 
