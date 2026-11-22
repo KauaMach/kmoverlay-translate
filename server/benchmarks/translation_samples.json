@@ -1,0 +1,31 @@
+{
+  "description": "Comic-style lines written for this project (no third-party text), as the OCR reads them (capitals), with reference translations.",
+  "source_language": "en",
+  "target_language": "pt-BR",
+  "pages": [
+    {
+      "segments": ["YOU ARE LATE AGAIN!", "THE TRAIN WAS DELAYED, I SWEAR!", "ALWAYS THE SAME EXCUSE...", "THIS TIME IT IS TRUE!"],
+      "references": ["Você se atrasou de novo!", "O trem atrasou, eu juro!", "Sempre a mesma desculpa...", "Dessa vez é verdade!"]
+    },
+    {
+      "segments": ["HEY, WATCH WHERE YOU'RE GOING!", "SORRY, I DIDN'T SEE YOU THERE.", "YEAH, RIGHT. YOU OWE ME A COFFEE.", "DEAL. BUT YOU'RE PAYING FOR THE DONUTS."],
+      "references": ["Ei, olha por onde anda!", "Desculpa, não te vi aí.", "Tá, sei. Você me deve um café.", "Fechado. Mas você paga as rosquinhas."]
+    },
+    {
+      "segments": ["GET DOWN!", "THEY'VE GOT US SURROUNDED!", "NOT FOR LONG. COVER ME!", "ARE YOU OUT OF YOUR MIND?!", "PROBABLY."],
+      "references": ["Abaixa!", "Eles cercaram a gente!", "Não por muito tempo. Me dá cobertura!", "Você ficou maluco?!", "Provavelmente."]
+    },
+    {
+      "segments": ["BREAK A LEG OUT THERE!", "THANKS... I THINK.", "IT'S A PIECE OF CAKE, YOU'LL SEE.", "EASY FOR YOU TO SAY."],
+      "references": ["Arrasa lá!", "Valeu... eu acho.", "É moleza, você vai ver.", "Falar é fácil."]
+    },
+    {
+      "segments": ["MAYA, IS THAT YOU?", "LONG TIME NO SEE, LEO!", "WHAT BRINGS YOU BACK TO TOWN?", "I'M HERE FOR THE TOURNAMENT.", "THEN I GUESS WE'RE RIVALS NOW."],
+      "references": ["Maya, é você?", "Quanto tempo, Leo!", "O que te traz de volta à cidade?", "Vim pro torneio.", "Então acho que agora somos rivais."]
+    },
+    {
+      "segments": ["MEANWHILE, ACROSS THE CITY...", "*SIGH* ANOTHER MONDAY.", "DID SOMEONE ORDER A PIZZA?", "I'M NOT HUNGRY... OKAY, MAYBE A LITTLE."],
+      "references": ["Enquanto isso, do outro lado da cidade...", "*suspiro* Mais uma segunda-feira.", "Alguém pediu pizza?", "Não tô com fome... Tá, talvez um pouco."]
+    }
+  ]
+}
