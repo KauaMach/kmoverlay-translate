@@ -16,6 +16,7 @@
     "postinstall": "wxt prepare"
   },
   "devDependencies": {
+    "fake-indexeddb": "6.2.8",
     "happy-dom": "21.0.4",
     "typescript": "6.0.3",
     "vitest": "5.1.1",
