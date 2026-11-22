@@ -230,3 +230,4 @@ samples/                 # páginas reais de teste, fora do git
 - Todo endpoint `/v1` do servidor exige o token; o servidor não envia cabeçalhos CORS e só responde aos nomes de `Host` permitidos.
 - O servidor usa o pipeline real (OCR com RapidOCR + tradução com Ollama). Com `KMOVERLAY_PIPELINE=demo` ele volta ao pipeline de demonstração, que só marca as imagens e não precisa de modelos.
 - Textos lidos das páginas nunca vão para os logs.
+- O cache do servidor fica fora do projeto (`~/.cache/kmoverlay-translate`); o da extensão, no IndexedDB do navegador. Mudanças no prompt do Ollama exigem aumentar `PROMPT_VERSION`, para os caches não servirem traduções antigas.
