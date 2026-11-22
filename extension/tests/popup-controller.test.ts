@@ -5,6 +5,7 @@ import {
   LOAD_FAILED_MESSAGE,
   OPEN_OPTIONS_FAILED_MESSAGE,
   SAVE_FAILED_MESSAGE,
+  SITE_PERMISSION_DENIED_MESSAGE,
   startPopup,
 } from '@/entrypoints/popup/controller';
 import { CONTROL_IDS } from '@/entrypoints/popup/render';
@@ -30,7 +31,14 @@ beforeEach(async () => {
   // the active tab of the current (focused) window.
   const focusedWindow = await fakeBrowser.windows.create({ focused: true });
   await fakeBrowser.tabs.create({ url: READER_URL, active: true, windowId: focusedWindow?.id });
+  // Turning a site on asks for its host permission; the fake browser does not implement it.
+  grantSitePermission(true);
 });
+
+function grantSitePermission(granted: boolean): ReturnType<typeof vi.spyOn> {
+  // The fake browser types this method with its callback overload, which returns void.
+  return vi.spyOn(fakeBrowser.permissions, 'request').mockResolvedValue(granted as never);
+}
 
 /** Makes the fake background script answer every server check with `status`. */
 function answerServerChecks(status: ServerStatus): void {
@@ -175,6 +183,23 @@ describe('startPopup: site settings', () => {
     expect(control(CONTROL_IDS.imagesSwitch).hasAttribute('disabled')).toBe(false);
     expect(control<HTMLSelectElement>(CONTROL_IDS.sourceLanguage).disabled).toBe(false);
     expect(root.querySelector('.popup__site-options')?.classList.contains('popup__dimmed')).toBe(false);
+    expect(fakeBrowser.permissions.request).toHaveBeenCalledWith({ origins: ['https://leitor.exemplo/*'] });
+    expect(root.querySelector<HTMLElement>('[role="alert"]')?.hidden).not.toBe(false);
+  });
+
+  it('turns the site off again when the browser permission is refused', async () => {
+    withoutContentScript();
+    answerServerChecks(ONLINE);
+    grantSitePermission(false);
+    await startPopup(root);
+
+    control(CONTROL_IDS.siteSwitch).click();
+
+    await vi.waitFor(() =>
+      expect(root.querySelector('[role="alert"]')?.textContent).toBe(SITE_PERMISSION_DENIED_MESSAGE),
+    );
+    await vi.waitFor(async () => expect((await loadSettings()).sites[READER_HOST]?.enabled).toBe(false));
+    expect(root.querySelector('.popup__site-subtitle')?.textContent).toBe('Desligado neste site');
   });
 
   it('keeps keyboard focus on the switch after the popup renders again', async () => {

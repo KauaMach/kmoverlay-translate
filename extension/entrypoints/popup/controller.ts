@@ -1,4 +1,5 @@
 import { browser } from 'wxt/browser';
+import { sitePermissionPattern } from '@/utils/content-script-registration';
 import { isSiteSourceLanguage, isTargetLanguage } from '@/utils/languages';
 import { requestPageStatus, requestServerCheck, sendToContentScript, type PageStatus } from '@/utils/messages';
 import { loadLastConnectedAt, type ServerStatus } from '@/utils/server-status';
@@ -33,6 +34,8 @@ export const SAVE_FAILED_MESSAGE = 'Não foi possível salvar a alteração. Ten
 export const PAGE_STATUS_FAILED_MESSAGE = 'Não foi possível ler o progresso desta página.';
 export const TOGGLE_ORIGINAL_FAILED_MESSAGE = 'Não foi possível alternar entre original e tradução.';
 export const OPEN_OPTIONS_FAILED_MESSAGE = 'Não foi possível abrir as opções.';
+export const SITE_PERMISSION_DENIED_MESSAGE = 'Sem a permissão do navegador, a extensão não consegue ler as imagens deste site.';
+export const SITE_PERMISSION_FAILED_MESSAGE = 'Não foi possível pedir a permissão deste site.';
 /** Shown as the reason of the error card when the background script could not run the check. */
 export const CHECK_FAILED_REASON = 'falha ao verificar o servidor';
 const LOG_PREFIX = 'KMOverlay popup:';
@@ -81,7 +84,8 @@ export async function startPopup(root: HTMLElement): Promise<void> {
     render();
   };
 
-  const changeSettings = (change: (settings: Settings) => Settings): void => {
+  /** Saves a change; `notice` is shown once it is saved (a message shown earlier would be cleared). */
+  const changeSettings = (change: (settings: Settings) => Settings, notice?: string): void => {
     settingsQueue = settingsQueue.then(async () => {
       if (state === null) {
         return;
@@ -94,14 +98,43 @@ export async function startPopup(root: HTMLElement): Promise<void> {
       }
       // Also after a failure: the switch already flipped itself and must show the saved value again.
       render();
+      if (notice !== undefined) {
+        view.showError(notice);
+      }
     });
   };
 
-  const changeCurrentSite = (change: (settings: Settings, host: string) => Settings): void => {
+  const changeCurrentSite = (change: (settings: Settings, host: string) => Settings, notice?: string): void => {
     const host = siteHostFromUrl(state?.tabUrl);
     if (host !== null) {
-      changeSettings((settings) => change(settings, host));
+      changeSettings((settings) => change(settings, host), notice);
     }
+  };
+
+  /**
+   * Asks for the host permission of the current site. The content script can
+   * only read the images with it; without it the site is turned off again.
+   */
+  const requestSitePermission = (): void => {
+    const url = state?.tabUrl;
+    if (url === undefined || siteHostFromUrl(url) === null) {
+      return;
+    }
+    let permission: Promise<boolean>;
+    try {
+      permission = browser.permissions.request({ origins: [sitePermissionPattern(url)] });
+    } catch (error) {
+      report(error, SITE_PERMISSION_FAILED_MESSAGE);
+      return;
+    }
+    permission.then(
+      (granted) => {
+        if (!granted) {
+          changeCurrentSite((settings, host) => setSiteEnabled(settings, host, false), SITE_PERMISSION_DENIED_MESSAGE);
+        }
+      },
+      (error: unknown) => report(error, SITE_PERMISSION_FAILED_MESSAGE),
+    );
   };
 
   const toggleOriginal = async (): Promise<void> => {
@@ -134,7 +167,13 @@ export async function startPopup(root: HTMLElement): Promise<void> {
       view.showError(null);
       void checkServer();
     },
-    onSiteEnabledChange: (enabled) => changeCurrentSite((settings, host) => setSiteEnabled(settings, host, enabled)),
+    onSiteEnabledChange: (enabled) => {
+      if (enabled) {
+        // Must run inside the click: browsers only show the permission prompt for a user gesture.
+        requestSitePermission();
+      }
+      changeCurrentSite((settings, host) => setSiteEnabled(settings, host, enabled));
+    },
     onImagesChange: (images) => changeCurrentSite((settings, host) => updateSite(settings, host, { images })),
     onTextChange: (text) => changeCurrentSite((settings, host) => updateSite(settings, host, { text })),
     onSourceLanguageChange: (value) => {

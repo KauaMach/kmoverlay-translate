@@ -1,0 +1,17 @@
+/* Layer over one image of the page (inside a shadow root, so page styles do not reach it). */
+
+:host {
+  all: initial;
+}
+
+.translated {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.translated[hidden] {
+  display: none;
+}
