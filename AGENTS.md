@@ -143,45 +143,61 @@ Pergunte antes de:
 
 ## Projeto
 
-> Preencha esta seção em cada projeto e apague o que não se aplicar.
-
 ### Visão geral
 
-<O que o projeto faz, em 1 ou 2 frases.>
+Extensão de navegador que traduz o texto das imagens (balões de HQ, mangá e webtoon) e o texto das páginas mantendo a formatação, com o processamento pesado num servidor local. O plano está em `docs/plano-implementacao.md`.
 
 ### Stack
 
-- Linguagens: <ex.: Python 3.12, TypeScript>
-- Frameworks: <ex.: FastAPI, React>
-- Banco de dados: <ex.: PostgreSQL>
+- Linguagens: TypeScript (extensão); Python 3.12 (servidor, ainda não criado)
+- Frameworks: WXT (Manifest V3, Chrome e Firefox), sem framework de UI; FastAPI no servidor
+- Testes: Vitest + happy-dom na extensão
+- Banco de dados: nenhum (`storage.local` e IndexedDB no navegador; cache em disco no servidor)
 
 ### Comandos
 
+Os comandos da extensão rodam dentro de `extension/`.
+
 ```bash
 # instalar dependências
-<comando>
+npm install
 
-# rodar em desenvolvimento
-<comando>
+# rodar em desenvolvimento (recompila a cada mudança; carregue a pasta como extensão sem compactação)
+npm run dev            # Chrome  → .output/chrome-mv3-dev
+npm run dev:firefox    # Firefox → .output/firefox-mv3-dev
 
 # testes
-<comando>
+npm test
 
-# lint e formatação
-<comando>
+# lint e formatação (por enquanto só a checagem de tipos; não há linter)
+npm run typecheck
 
 # build
-<comando>
+npm run build          # Chrome  → .output/chrome-mv3
+npm run build:firefox  # Firefox → .output/firefox-mv3
+
+# regenerar os ícones PNG a partir de assets/icon.svg (precisa de rsvg-convert)
+npm run icons
 ```
 
 ### Estrutura
 
 ```
-<pasta>/    # o que fica aqui
-<pasta>/    # o que fica aqui
+extension/entrypoints/   # background, popup e opções (content script a partir da Fase 3)
+extension/components/    # controles e componentes de página (shadow DOM)
+extension/utils/         # configurações, mensagens, status do servidor, helpers de DOM
+extension/assets/        # tokens visuais (CSS) e ícone em SVG
+extension/public/        # ícones PNG e fontes embutidas (OFL)
+extension/tests/         # testes Vitest
+docs/                    # plano de implementação
+samples/                 # páginas reais de teste, fora do git
 ```
 
 ### Regras específicas
 
-- <ex.: toda rota nova precisa de teste de integração>
-- <ex.: não alterar a pasta `legacy/`>
+- Nunca usar `innerHTML`, `outerHTML` ou `insertAdjacentHTML`: montar a DOM com `h()` de `extension/utils/dom.ts`, porque texto de páginas e do servidor não pode ser interpretado como HTML.
+- Cores, fontes e raios só pelos tokens de `extension/assets/styles/tokens.css`.
+- Textos da interface em português do Brasil; código e comentários em inglês.
+- Só o background fala com o servidor; o token fica em `storage.local`.
+- Recursos de fases futuras ficam escondidos na interface até existirem.
+- Páginas reais de teste ficam em `samples/` e nunca vão para o git.
