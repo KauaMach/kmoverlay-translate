@@ -1,9 +1,8 @@
 import { h } from '@/utils/dom';
 import { formatBytes } from '@/utils/format';
+import { createImageCache, IMAGE_CACHE_DATABASE_NAME, type CacheStats, type ImageCache } from '@/utils/image-cache';
 import { createSectionCard } from './page-parts';
 
-/** IndexedDB database of translated images (filled by the content script from Fase 3 on). */
-export const IMAGE_CACHE_DATABASE_NAME = 'kmoverlay-image-cache';
 export const CONFIRM_CLEAR_CACHE_TEXT = 'Apagar as traduções guardadas neste navegador?';
 export const SIZE_UNAVAILABLE_TEXT = 'Tamanho indisponível';
 export const CACHE_CLEARED_TEXT = 'Cache limpo.';
@@ -15,14 +14,18 @@ export type CacheDeletion = 'deleted' | 'blocked';
 
 /** Browser features the section uses, replaceable in tests. */
 export interface CacheSectionDependencies {
-  estimate(): Promise<StorageEstimate | null>;
+  stats(): Promise<CacheStats>;
   confirm(message: string): boolean;
   deleteDatabase(name: string): Promise<CacheDeletion>;
 }
 
-/** Text next to "Neste navegador": the space this extension uses, when the browser tells it. */
-export function describeCacheUsage(estimate: StorageEstimate | null): string {
-  return typeof estimate?.usage === 'number' ? `${formatBytes(estimate.usage)} em uso` : SIZE_UNAVAILABLE_TEXT;
+/** Text next to "Neste navegador", as in the design: "148 MB · 312 páginas traduzidas". */
+export function describeCacheUsage(stats: CacheStats | null): string {
+  if (stats === null) {
+    return SIZE_UNAVAILABLE_TEXT;
+  }
+  const pages = stats.pages === 1 ? '1 página traduzida' : `${stats.pages} páginas traduzidas`;
+  return `${formatBytes(stats.bytes)} · ${pages}`;
 }
 
 /**
@@ -38,9 +41,14 @@ export function deleteIndexedDatabase(name: string, factory: IDBFactory = indexe
   });
 }
 
+/** One connection for the page; it closes by itself when the database is deleted. */
+let pageCache: ImageCache | null = null;
+
 const defaultDependencies: CacheSectionDependencies = {
-  // `navigator.storage` is missing on pages that are not a secure context.
-  estimate: async () => (navigator.storage ? navigator.storage.estimate() : null),
+  stats: () => {
+    pageCache ??= createImageCache();
+    return pageCache.stats();
+  },
   confirm: (message) => window.confirm(message),
   deleteDatabase: (name) => deleteIndexedDatabase(name),
 };
@@ -52,9 +60,9 @@ export function createCacheSection(dependencies: CacheSectionDependencies = defa
 
   const refreshUsage = async (): Promise<void> => {
     try {
-      usage.textContent = describeCacheUsage(await dependencies.estimate());
+      usage.textContent = describeCacheUsage(await dependencies.stats());
     } catch (error) {
-      console.error('KMOverlay: could not read the storage estimate.', error);
+      console.error('KMOverlay: could not read the image cache size.', error);
       usage.textContent = SIZE_UNAVAILABLE_TEXT;
     }
   };

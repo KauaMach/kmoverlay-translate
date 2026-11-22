@@ -4,13 +4,13 @@ import {
   CACHE_CLEAR_FAILED_TEXT,
   CACHE_CLEAR_PENDING_TEXT,
   CONFIRM_CLEAR_CACHE_TEXT,
-  IMAGE_CACHE_DATABASE_NAME,
   SIZE_UNAVAILABLE_TEXT,
   createCacheSection,
   describeCacheUsage,
   type CacheSectionDependencies,
 } from '@/entrypoints/options/cache-section';
 import { debounce } from '@/entrypoints/options/debounce';
+import { IMAGE_CACHE_DATABASE_NAME } from '@/utils/image-cache';
 import { chooseActiveSection, createSectionNav } from '@/entrypoints/options/section-nav';
 import { createSettingsSaver, type SaveState, type SettingsChange } from '@/entrypoints/options/settings-saver';
 import {
@@ -192,20 +192,20 @@ describe('resolveShortcutSettingsAction', () => {
 });
 
 describe('describeCacheUsage', () => {
-  it('shows the space in use', () => {
-    expect(describeCacheUsage({ usage: 148 * MEGABYTE })).toBe('148 MB em uso');
+  it('shows the size and the number of pages, as in the design', () => {
+    expect(describeCacheUsage({ bytes: 148 * MEGABYTE, pages: 312 })).toBe('148 MB · 312 páginas traduzidas');
+    expect(describeCacheUsage({ bytes: 512 * 1024, pages: 1 })).toBe('512 KB · 1 página traduzida');
   });
 
-  it('says when the browser does not tell the size', () => {
+  it('says when the cache cannot be read', () => {
     expect(describeCacheUsage(null)).toBe(SIZE_UNAVAILABLE_TEXT);
-    expect(describeCacheUsage({})).toBe(SIZE_UNAVAILABLE_TEXT);
   });
 });
 
 describe('createCacheSection', () => {
   function setup(overrides: Partial<CacheSectionDependencies> = {}) {
     const dependencies = {
-      estimate: vi.fn(async (): Promise<StorageEstimate | null> => ({ usage: 2 * MEGABYTE })),
+      stats: vi.fn(async () => ({ bytes: 2 * MEGABYTE, pages: 3 })),
       confirm: vi.fn(() => true),
       deleteDatabase: vi.fn(async () => 'deleted' as const),
       ...overrides,
@@ -224,7 +224,7 @@ describe('createCacheSection', () => {
   it('shows the space this browser uses', async () => {
     const { usage, section } = setup();
 
-    await vi.waitFor(() => expect(usage()).toBe('2 MB em uso'));
+    await vi.waitFor(() => expect(usage()).toBe('2 MB · 3 páginas traduzidas'));
     expect(section.textContent).toContain('O cache do servidor é compartilhado entre PC e celular e não é apagado aqui.');
   });
 
@@ -244,7 +244,7 @@ describe('createCacheSection', () => {
 
     await vi.waitFor(() => expect(status()).toBe(CACHE_CLEARED_TEXT));
     expect(dependencies.deleteDatabase).toHaveBeenCalledWith(IMAGE_CACHE_DATABASE_NAME);
-    await vi.waitFor(() => expect(dependencies.estimate).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(dependencies.stats).toHaveBeenCalledTimes(2));
   });
 
   it('explains a deletion that waits for open pages', async () => {

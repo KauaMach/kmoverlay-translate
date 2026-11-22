@@ -1,8 +1,10 @@
 import { browser } from 'wxt/browser';
+import { createImageCache, imageCacheKey, type CachedTranslation, type ImageCache } from './image-cache';
 import type { TranslateImageRequest, TranslateImageResult } from './messages';
 import { isLocalServer, serverPermissionPattern } from './server-status';
 import { loadSettings, type Settings } from './settings';
 
+const HEALTH_PATH = '/v1/health';
 const LOOKUP_PATH = '/v1/lookup';
 const TRANSLATE_PATH = '/v1/translate';
 const HTTP_NOT_FOUND = 404;
@@ -10,6 +12,12 @@ const HTTP_UNAUTHORIZED = 401;
 const HTTP_FORBIDDEN = 403;
 const DEFAULT_IMAGE_TYPE = 'application/octet-stream';
 const RESULT_DATA_URL_PREFIX = 'data:image/webp;base64,';
+/** How long the pipeline version of the server is trusted before asking again. */
+const PIPELINE_VERSION_MEMO_MS = 30_000;
+
+/** Last pipeline version seen per server address (`null`: the server did not answer). */
+const pipelineVersions = new Map<string, { version: string | null; checkedAt: number }>();
+let sharedCache: ImageCache | null = null;
 
 export const SERVER_UNREACHABLE_REASON = 'Servidor não encontrado.';
 export const TOKEN_REFUSED_REASON = 'Token recusado pelo servidor.';
@@ -28,14 +36,17 @@ interface ServerTranslateOptions {
 
 /**
  * Translates one image of a page: downloads it (the background script is not
- * limited by CORS), asks the server cache first and only uploads it when the
- * server has not translated it yet. Failures become an `error` result with a
- * message for the reader; `signal` aborts every request.
+ * limited by CORS) and looks for it, in this order, in the browser cache, in
+ * the server cache, and only then uploads it. A page in the browser cache is
+ * used when the server has the same pipeline version or does not answer, so
+ * translated pages still show with the server off. Failures become an `error`
+ * result with a message for the reader; `signal` aborts every request.
  */
 export async function translateImage(
   request: TranslateImageRequest,
   signal: AbortSignal,
   fetchFunction: typeof fetch = fetch,
+  cache: ImageCache = sharedImageCache(),
 ): Promise<TranslateImageResult> {
   const settings = await loadSettings();
   if (!(await canReachServer(settings.serverUrl))) {
@@ -45,8 +56,16 @@ export async function translateImage(
   if (image.state === 'error') {
     return image;
   }
-  const options = toServerOptions(request);
   const imageSha256 = await sha256Hex(image.bytes);
+  const key = imageCacheKey(imageSha256, request.sourceLanguage, request.targetLanguage);
+  const stored = await readCache(cache, key);
+  if (stored !== null) {
+    const serverVersion = await currentPipelineVersion(settings, signal, fetchFunction);
+    if (serverVersion === null || serverVersion === stored.pipelineVersion) {
+      return { state: 'translated', imageDataUrl: stored.imageDataUrl };
+    }
+  }
+  const options = toServerOptions(request);
   const cached = await callServer(
     settings,
     LOOKUP_PATH,
@@ -55,14 +74,17 @@ export async function translateImage(
     fetchFunction,
   );
   if (cached.state !== 'not-found') {
-    return toTranslateResult(cached);
+    return finish(cached, cache, key);
   }
   const form = new FormData();
   form.append('images', new Blob([image.bytes], { type: image.type }), 'image');
   form.append('options', JSON.stringify(options));
-  return toTranslateResult(
-    await callServer(settings, TRANSLATE_PATH, { method: 'POST', body: form }, signal, fetchFunction),
-  );
+  return finish(await callServer(settings, TRANSLATE_PATH, { method: 'POST', body: form }, signal, fetchFunction), cache, key);
+}
+
+/** Forgets the pipeline versions seen, e.g. between tests. */
+export function clearPipelineVersions(): void {
+  pipelineVersions.clear();
 }
 
 /** Extracts the translated image from a `/v1/translate` or `/v1/lookup` body, or `null` when it is malformed. */
@@ -78,6 +100,11 @@ export function readResultImage(body: unknown): string | null {
 }
 
 type DownloadResult = { state: 'downloaded'; bytes: ArrayBuffer; type: string } | { state: 'error'; reason: string };
+
+/** Pipeline version in a `/v1/translate`, `/v1/lookup` or `/v1/health` body, or `null`. */
+export function readPipelineVersion(body: unknown): string | null {
+  return isRecord(body) && typeof body.pipeline_version === 'string' ? body.pipeline_version : null;
+}
 
 type ServerCall = { state: 'ok'; body: unknown } | { state: 'not-found' } | { state: 'error'; reason: string };
 
@@ -120,7 +147,7 @@ async function callServer(
   try {
     response = await fetchFunction(`${settings.serverUrl}${path}`, {
       ...init,
-      headers: { ...init.headers, ...(settings.token === '' ? {} : { Authorization: `Bearer ${settings.token}` }) },
+      headers: { ...init.headers, ...authorization(settings) },
       signal,
     });
   } catch (error) {
@@ -140,6 +167,65 @@ async function callServer(
     return { state: 'error', reason: readErrorMessage(body) ?? `O servidor respondeu com erro (HTTP ${response.status}).` };
   }
   return { state: 'ok', body };
+}
+
+/** Turns the server answer into a result and keeps a successful translation in the browser cache. */
+async function finish(call: ServerCall, cache: ImageCache, key: string): Promise<TranslateImageResult> {
+  const result = toTranslateResult(call);
+  const pipelineVersion = call.state === 'ok' ? readPipelineVersion(call.body) : null;
+  if (result.state === 'translated' && pipelineVersion !== null) {
+    await writeCache(cache, key, { imageDataUrl: result.imageDataUrl, pipelineVersion });
+  }
+  return result;
+}
+
+/**
+ * The pipeline version the server uses now, remembered for a short time.
+ * `null` when the server does not answer (off, wrong token): cached pages are then trusted.
+ */
+async function currentPipelineVersion(settings: Settings, signal: AbortSignal, fetchFunction: typeof fetch): Promise<string | null> {
+  const remembered = pipelineVersions.get(settings.serverUrl);
+  if (remembered !== undefined && Date.now() - remembered.checkedAt < PIPELINE_VERSION_MEMO_MS) {
+    return remembered.version;
+  }
+  let version: string | null = null;
+  try {
+    const response = await fetchFunction(`${settings.serverUrl}${HEALTH_PATH}`, { headers: authorization(settings), signal });
+    version = response.ok ? readPipelineVersion(await readJson(response)) : null;
+  } catch (error) {
+    if (!isNetworkError(error)) {
+      throw error;
+    }
+  }
+  pipelineVersions.set(settings.serverUrl, { version, checkedAt: Date.now() });
+  return version;
+}
+
+/** The browser cache never blocks a translation: its failures are reported and skipped. */
+async function readCache(cache: ImageCache, key: string): Promise<CachedTranslation | null> {
+  try {
+    return await cache.get(key);
+  } catch (error) {
+    console.error('KMOverlay: could not read the image cache.', error);
+    return null;
+  }
+}
+
+async function writeCache(cache: ImageCache, key: string, translation: CachedTranslation): Promise<void> {
+  try {
+    await cache.put(key, translation);
+  } catch (error) {
+    console.error('KMOverlay: could not write the image cache.', error);
+  }
+}
+
+function sharedImageCache(): ImageCache {
+  sharedCache ??= createImageCache();
+  return sharedCache;
+}
+
+function authorization(settings: Settings): Record<string, string> {
+  return settings.token === '' ? {} : { Authorization: `Bearer ${settings.token}` };
 }
 
 function toTranslateResult(call: ServerCall): TranslateImageResult {
