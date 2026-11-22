@@ -37,3 +37,6 @@ init-agents.sh
 .DS_Store
 .vscode/
 .idea/
+
+# Real test pages (copyrighted, kept local only)
+samples/
