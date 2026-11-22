@@ -42,6 +42,14 @@ class Translator(Protocol):
         """
         ...
 
+    def warm_up(self) -> None:
+        """Loads the model now, so the first page does not wait for it.
+
+        Raises:
+            TranslatorError: when the engine is unreachable.
+        """
+        ...
+
     def unload(self) -> None:
         """Frees the memory (VRAM) of the model; the next call loads it again."""
         ...

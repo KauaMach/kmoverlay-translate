@@ -7,8 +7,9 @@ import pytest
 
 from kmoverlay_server.pipeline.translators import TranslationRequest, TranslatorError
 from kmoverlay_server.pipeline.translators.ollama import (
-    KEEP_ALIVE,
+    DEFAULT_KEEP_ALIVE,
     OllamaTranslator,
+    build_messages,
     parse_translations,
     translations_schema,
 )
@@ -53,11 +54,12 @@ def test_translates_the_whole_page_in_one_call() -> None:
     assert path == "/api/chat"
     assert payload["model"] == MODEL
     assert payload["stream"] is False
-    assert payload["keep_alive"] == KEEP_ALIVE
+    assert payload["keep_alive"] == DEFAULT_KEEP_ALIVE
+    assert payload["think"] is False
     assert payload["format"] == translations_schema(2)
     assert "English" in payload["messages"][0]["content"]
     assert "Brazilian Portuguese" in payload["messages"][0]["content"]
-    assert json.loads(payload["messages"][1]["content"]) == {
+    assert json.loads(payload["messages"][-1]["content"]) == {
         "segments": ["YOU ARE LATE!", "THE TRAIN WAS DELAYED!"]
     }
 
@@ -104,7 +106,7 @@ def test_previous_page_lines_go_as_context() -> None:
 
     translator.translate(["HI"], TranslationRequest("en", "pt-BR", context=("EARLIER LINE",)))
 
-    assert json.loads(sent[0][1]["messages"][1]["content"])["previous_page"] == ["EARLIER LINE"]
+    assert json.loads(sent[0][1]["messages"][-1]["content"])["previous_page"] == ["EARLIER LINE"]
 
 
 def test_nothing_to_translate_makes_no_call() -> None:
@@ -127,3 +129,51 @@ def test_parsing_rejects_malformed_answers() -> None:
     assert parse_translations({"message": {"content": '{"translations": [1]}'}}, 1) is None
     assert parse_translations({"message": {"content": "{}"}}, 1) is None
     assert parse_translations({"error": "x"}, 1) is None
+
+
+def test_warm_up_loads_the_model_without_a_prompt() -> None:
+    translator, sent = translator_with(lambda _request: httpx.Response(200, json={"done": True}))
+
+    translator.warm_up()
+
+    assert sent == [("/api/generate", {"model": MODEL, "keep_alive": DEFAULT_KEEP_ALIVE})]
+
+
+def test_warm_up_reports_a_missing_model() -> None:
+    translator, _ = translator_with(
+        lambda _request: httpx.Response(404, json={"error": "not found"})
+    )
+
+    with pytest.raises(TranslatorError, match="ollama pull"):
+        translator.warm_up()
+
+
+def test_keep_alive_can_be_changed() -> None:
+    sent: list[Any] = []
+
+    def record(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json={"done": True})
+
+    client = httpx.Client(base_url="http://ollama.test", transport=httpx.MockTransport(record))
+    OllamaTranslator(model=MODEL, keep_alive="2h", client=client).warm_up()
+
+    assert sent[0]["keep_alive"] == "2h"
+
+
+def test_brazilian_portuguese_gets_style_rules_and_worked_examples() -> None:
+    messages = build_messages(["HI"], REQUEST)
+
+    assert '"tá"' in messages[0]["content"]
+    assert [message["role"] for message in messages[1:]] == ["user", "assistant"] * 2 + ["user"]
+    for user, assistant in zip(messages[1:-1:2], messages[2:-1:2], strict=True):
+        examples = json.loads(user["content"])["segments"]
+        assert len(json.loads(assistant["content"])["translations"]) == len(examples)
+
+
+def test_other_targets_get_no_brazilian_rules() -> None:
+    messages = build_messages(["HI"], TranslationRequest("en", "es"))
+
+    assert '"tá"' not in messages[0]["content"]
+    assert "Spanish" in messages[0]["content"]
+    assert len(messages) == 2
