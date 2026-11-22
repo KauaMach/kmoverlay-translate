@@ -3,6 +3,10 @@ import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { handleCommand, TOGGLE_ORIGINAL_COMMAND, TOGGLE_SITE_COMMAND } from '@/entrypoints/background';
 import {
   isBackgroundRequest,
+  isContentRequest,
+  isTranslateImageRequest,
+  isTranslateImageResult,
+  reportQueueSize,
   isPageStatus,
   requestPageStatus,
   requestServerCheck,
@@ -98,5 +102,34 @@ describe('handleCommand (background)', () => {
     await expect(handleCommand(TOGGLE_ORIGINAL_COMMAND, readerTab)).resolves.toBeUndefined();
 
     expect(sendMessage).toHaveBeenCalledWith(TAB_ID, { type: 'toggle-original' });
+  });
+});
+
+describe('content and translation messages', () => {
+  it('recognizes the content requests and the queue report', () => {
+    expect(isContentRequest({ type: 'get-page-status' })).toBe(true);
+    expect(isContentRequest({ type: 'check-server' })).toBe(false);
+    expect(isBackgroundRequest({ type: 'queue-changed', pending: 3 })).toBe(true);
+    expect(isBackgroundRequest({ type: 'queue-changed', pending: -1 })).toBe(false);
+  });
+
+  it('validates what crosses the translation port', () => {
+    const request = { url: 'https://leitor.exemplo/1.png', sourceLanguage: 'en', targetLanguage: 'pt-BR', priority: 'visible' };
+    expect(isTranslateImageRequest(request)).toBe(true);
+    expect(isTranslateImageRequest({ ...request, sourceLanguage: 'auto' })).toBe(false);
+    expect(isTranslateImageResult({ state: 'translated', imageDataUrl: 'data:image/webp;base64,AA' })).toBe(true);
+    expect(isTranslateImageResult({ state: 'error', reason: 'x' })).toBe(true);
+    expect(isTranslateImageResult({ state: 'translated' })).toBe(false);
+  });
+
+  it('reports the queue size, ignoring that the background does not answer', async () => {
+    const sendMessage = vi
+      .spyOn(fakeBrowser.runtime, 'sendMessage')
+      .mockRejectedValueOnce(new Error('The message port closed before a response was received.'))
+      .mockRejectedValueOnce(new Error('Extension context invalidated.'));
+
+    await expect(reportQueueSize(2)).resolves.toBeUndefined();
+    expect(sendMessage).toHaveBeenCalledWith({ type: 'queue-changed', pending: 2 });
+    await expect(reportQueueSize(1)).rejects.toThrow('Extension context invalidated');
   });
 });

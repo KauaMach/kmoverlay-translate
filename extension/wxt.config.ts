@@ -4,7 +4,8 @@ export default defineConfig({
   manifest: {
     name: 'KMOverlay Translate',
     description: 'Traduz balões de HQ e o texto das páginas no lugar, usando um servidor local.',
-    permissions: ['storage', 'activeTab'],
+    // `scripting` registers the content script only on the sites the user turns on.
+    permissions: ['storage', 'activeTab', 'scripting'],
     // The default local server is always reachable; any other server address is
     // requested at runtime from the options page.
     host_permissions: ['http://127.0.0.1/*', 'http://localhost/*'],

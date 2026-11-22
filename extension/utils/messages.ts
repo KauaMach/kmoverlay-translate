@@ -1,8 +1,29 @@
 import { browser } from 'wxt/browser';
+import { isSourceLanguage, isTargetLanguage, type SourceLanguage, type TargetLanguage } from './languages';
 import { isServerStatus, type ServerStatus } from './server-status';
 
+/** Sent by the content script when its queue changes, for the badge of the toolbar icon. */
+export interface QueueChangedMessage {
+  type: 'queue-changed';
+  pending: number;
+}
+
 /** Requests handled by the background script. */
-export type BackgroundRequest = { type: 'check-server' };
+export type BackgroundRequest = { type: 'check-server' } | QueueChangedMessage;
+
+/** Name of the port a content script opens to translate one image; disconnecting it cancels the work. */
+export const TRANSLATE_PORT_NAME = 'translate-image';
+
+/** First (and only) message a content script sends on a translation port. */
+export interface TranslateImageRequest {
+  url: string;
+  sourceLanguage: SourceLanguage;
+  targetLanguage: TargetLanguage;
+  priority: 'visible' | 'prefetch';
+}
+
+/** Answer of the background script on a translation port. */
+export type TranslateImageResult = { state: 'translated'; imageDataUrl: string } | { state: 'error'; reason: string };
 
 /** Requests handled by the content script (registered from Fase 3 on). */
 export type ContentRequest = { type: 'get-page-status' } | { type: 'toggle-original' };
@@ -20,9 +41,52 @@ export interface PageStatus {
  */
 const NO_ANSWER_ERRORS = ['Receiving end does not exist', 'message port closed before a response was received'];
 
-/** Type guard for messages the background script answers. */
+/** Type guard for messages the background script handles. */
 export function isBackgroundRequest(message: unknown): message is BackgroundRequest {
-  return typeof message === 'object' && message !== null && 'type' in message && message.type === 'check-server';
+  if (!isRecord(message)) {
+    return false;
+  }
+  return message.type === 'check-server' || (message.type === 'queue-changed' && isCount(message.pending));
+}
+
+/** Type guard for the request a content script sends on a translation port. */
+export function isTranslateImageRequest(value: unknown): value is TranslateImageRequest {
+  return (
+    isRecord(value) &&
+    typeof value.url === 'string' &&
+    isSourceLanguage(value.sourceLanguage) &&
+    isTargetLanguage(value.targetLanguage) &&
+    (value.priority === 'visible' || value.priority === 'prefetch')
+  );
+}
+
+/** Type guard for the answer the background script sends on a translation port. */
+export function isTranslateImageResult(value: unknown): value is TranslateImageResult {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    (value.state === 'translated' && typeof value.imageDataUrl === 'string') ||
+    (value.state === 'error' && typeof value.reason === 'string')
+  );
+}
+
+/** Type guard for messages the content script handles. */
+export function isContentRequest(message: unknown): message is ContentRequest {
+  return isRecord(message) && (message.type === 'get-page-status' || message.type === 'toggle-original');
+}
+
+/** Tells the background script how many images of this tab are waiting, for the badge. */
+export async function reportQueueSize(pending: number): Promise<void> {
+  const message: QueueChangedMessage = { type: 'queue-changed', pending };
+  try {
+    await browser.runtime.sendMessage(message);
+  } catch (error) {
+    // The background does not answer this message; only real failures matter.
+    if (!isNoAnswerError(error)) {
+      throw error;
+    }
+  }
 }
 
 /** Asks the background script to check the configured server. */
@@ -44,12 +108,17 @@ export async function sendToContentScript(tabId: number, request: ContentRequest
   try {
     return await browser.tabs.sendMessage(tabId, request);
   } catch (error) {
-    const message = errorMessage(error);
-    if (NO_ANSWER_ERRORS.some((text) => message.includes(text))) {
+    if (isNoAnswerError(error)) {
       return null;
     }
     throw error;
   }
+}
+
+/** True for the errors browsers give when nobody listens to a message, or nobody answers it. */
+function isNoAnswerError(error: unknown): boolean {
+  const message = errorMessage(error);
+  return NO_ANSWER_ERRORS.some((text) => message.includes(text));
 }
 
 /** Status of the page in a tab, or `null` when there is no content script to answer. */
@@ -69,6 +138,10 @@ export function isPageStatus(value: unknown): value is PageStatus {
 
 function isCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**
