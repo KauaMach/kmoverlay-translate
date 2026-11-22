@@ -10,9 +10,11 @@ from kmoverlay_server.api.errors import install_error_handlers
 from kmoverlay_server.api.routes import create_api_router
 from kmoverlay_server.demo.routes import create_demo_router
 from kmoverlay_server.pipeline.page_pipeline import PagePipeline
-from kmoverlay_server.result_cache import MemoryResultCache
+from kmoverlay_server.result_cache import DiskResultCache, MemoryResultCache, ResultCache
 from kmoverlay_server.settings import ServerSettings
 from kmoverlay_server.warm_up import start_warm_up
+
+BYTES_PER_MEGABYTE = 1024 * 1024
 
 
 def create_app(settings: ServerSettings, pipeline: PagePipeline) -> FastAPI:
@@ -39,6 +41,13 @@ def create_app(settings: ServerSettings, pipeline: PagePipeline) -> FastAPI:
     )
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
     install_error_handlers(app)
-    app.include_router(create_api_router(settings, pipeline, MemoryResultCache()))
+    app.include_router(create_api_router(settings, pipeline, create_cache(settings)))
     app.include_router(create_demo_router())
     return app
+
+
+def create_cache(settings: ServerSettings) -> ResultCache:
+    """Disk cache in `cache_dir` (survives restarts), or in memory when there is none (tests)."""
+    if settings.cache_dir is None:
+        return MemoryResultCache[bytes]()
+    return DiskResultCache(settings.cache_dir, settings.cache_max_mb * BYTES_PER_MEGABYTE)

@@ -60,6 +60,7 @@ def test_health_reports_the_pipeline(client: TestClient, auth_headers: dict[str,
         "gpu_name": None,
         "models_loaded": False,
         "translator": "demo",
+        "pipeline_version": DEMO_PIPELINE_VERSION,
     }
 
 

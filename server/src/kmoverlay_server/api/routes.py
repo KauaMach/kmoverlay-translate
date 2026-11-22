@@ -1,13 +1,12 @@
 """Endpoints of the `/v1` API."""
 
-import asyncio
 import json
 import time
 from collections.abc import Sequence
 from http import HTTPStatus
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 
@@ -26,31 +25,40 @@ from kmoverlay_server.api.schemas import (
     TranslateOptions,
     TranslateResponse,
 )
+from kmoverlay_server.job_queue import (
+    PRIORITY_PREFETCH,
+    PRIORITY_VISIBLE,
+    PriorityGate,
+    QueueFullError,
+)
 from kmoverlay_server.pipeline.page_pipeline import PagePipeline, PageResult, PipelineOptions
 from kmoverlay_server.pipeline.translators import TranslatorError
-from kmoverlay_server.result_cache import MemoryResultCache
+from kmoverlay_server.result_cache import ResultCache
 from kmoverlay_server.settings import ServerSettings
 
 TOO_MANY_IMAGES_CODE = "too-many-images"
 TRANSLATOR_UNAVAILABLE_CODE = "translator-unavailable"
+QUEUE_FULL_CODE = "queue-full"
+QUEUE_FULL_MESSAGE = "Muitas páginas na fila; tente de novo em instantes."
+# Nginx convention for "the client went away"; nobody reads the answer anyway.
+CLIENT_CLOSED_REQUEST = 499
+JSON_MEDIA_TYPE = "application/json"
+PRIORITIES = {"visible": PRIORITY_VISIBLE, "prefetch": PRIORITY_PREFETCH}
 NOT_CACHED_CODE = "not-cached"
 NOT_CACHED_MESSAGE = "Estas imagens ainda não foram traduzidas com estas opções."
 INVALID_OPTIONS_MESSAGE = "As opções não seguem o contrato da API."
 MILLISECONDS_PER_SECOND = 1000
 
-ResponseCache = MemoryResultCache[TranslateResponse]
-
 
 def create_api_router(
-    settings: ServerSettings, pipeline: PagePipeline, cache: ResponseCache
+    settings: ServerSettings, pipeline: PagePipeline, cache: ResultCache
 ) -> APIRouter:
     """Builds the `/v1` routes; every one of them requires the token."""
     router = APIRouter(
         prefix="/v1", dependencies=[Depends(create_token_dependency(settings.token))]
     )
-    # One job at a time, because the models share a single GPU. Fase 2 replaces
-    # this lock with a priority queue (text > visible image > prefetch).
-    work_lock = asyncio.Lock()
+    # One job at a time, because the models share a single GPU; pages on screen go first.
+    gate = PriorityGate()
 
     @router.get("/health")
     async def health() -> HealthResponse:
@@ -59,12 +67,15 @@ def create_api_router(
             gpu_name=pipeline.gpu_name,
             models_loaded=pipeline.models_loaded,
             translator=pipeline.translator_name,
+            pipeline_version=pipeline.version,
         )
 
-    @router.post("/translate")
+    @router.post("/translate", response_model=TranslateResponse)
     async def translate(
-        images: Annotated[list[UploadFile], File()], options: Annotated[str, Form()]
-    ) -> TranslateResponse:
+        request: Request,
+        images: Annotated[list[UploadFile], File()],
+        options: Annotated[str, Form()],
+    ) -> Response:
         parsed_options = parse_options(options)
         check_image_count(len(images), settings.max_images_per_request)
         uploaded = [
@@ -74,31 +85,47 @@ def create_api_router(
         key = cache_key([image.sha256 for image in uploaded], parsed_options, pipeline.version)
         cached = cache.get(key)
         if cached is not None:
-            return cached
+            return json_response(cached)
         started = time.perf_counter()
-        async with work_lock:
-            try:
+        try:
+            async with gate.turn(PRIORITIES[parsed_options.priority]):
+                # The reader scrolled away or the page closed while this waited.
+                if await request.is_disconnected():
+                    return Response(status_code=CLIENT_CLOSED_REQUEST)
                 results = await run_in_threadpool(run_pipeline, pipeline, uploaded, parsed_options)
-            except TranslatorError as error:
-                raise ApiError(
-                    HTTPStatus.SERVICE_UNAVAILABLE, TRANSLATOR_UNAVAILABLE_CODE, str(error)
-                ) from error
+        except QueueFullError as error:
+            raise ApiError(
+                HTTPStatus.TOO_MANY_REQUESTS, QUEUE_FULL_CODE, QUEUE_FULL_MESSAGE
+            ) from error
+        except TranslatorError as error:
+            raise ApiError(
+                HTTPStatus.SERVICE_UNAVAILABLE, TRANSLATOR_UNAVAILABLE_CODE, str(error)
+            ) from error
         elapsed_ms = round((time.perf_counter() - started) * MILLISECONDS_PER_SECOND)
-        response = TranslateResponse(
-            pipeline_version=pipeline.version, results=results, timings_ms={"total": elapsed_ms}
+        body = (
+            TranslateResponse(
+                pipeline_version=pipeline.version, results=results, timings_ms={"total": elapsed_ms}
+            )
+            .model_dump_json()
+            .encode("utf-8")
         )
-        cache.put(key, response)
-        return response
+        cache.put(key, body)
+        return json_response(body)
 
-    @router.post("/lookup")
-    async def lookup(request: LookupRequest) -> TranslateResponse:
+    @router.post("/lookup", response_model=TranslateResponse)
+    async def lookup(request: LookupRequest) -> Response:
         check_image_count(len(request.image_sha256s), settings.max_images_per_request)
         cached = cache.get(cache_key(request.image_sha256s, request.options, pipeline.version))
         if cached is None:
             raise ApiError(HTTPStatus.NOT_FOUND, NOT_CACHED_CODE, NOT_CACHED_MESSAGE)
-        return cached
+        return json_response(cached)
 
     return router
+
+
+def json_response(body: bytes) -> Response:
+    """Sends cached JSON as it is, without decoding and encoding it again."""
+    return Response(content=body, media_type=JSON_MEDIA_TYPE)
 
 
 def parse_options(raw: str) -> TranslateOptions:

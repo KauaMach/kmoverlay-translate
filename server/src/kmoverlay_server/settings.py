@@ -20,6 +20,11 @@ PIPELINE_VARIABLE = "KMOVERLAY_PIPELINE"
 OLLAMA_URL_VARIABLE = "KMOVERLAY_OLLAMA_URL"
 OLLAMA_MODEL_VARIABLE = "KMOVERLAY_OLLAMA_MODEL"
 OLLAMA_KEEP_ALIVE_VARIABLE = "KMOVERLAY_OLLAMA_KEEP_ALIVE"
+CACHE_DIR_VARIABLE = "KMOVERLAY_CACHE_DIR"
+CACHE_MAX_MB_VARIABLE = "KMOVERLAY_CACHE_MAX_MB"
+XDG_CACHE_HOME_VARIABLE = "XDG_CACHE_HOME"
+CACHE_FOLDER_NAME = "kmoverlay-translate"
+DEFAULT_CACHE_MAX_MB = 1024
 
 PipelineName = Literal["translate", "demo"]
 PIPELINE_NAMES: tuple[PipelineName, ...] = ("translate", "demo")
@@ -56,6 +61,9 @@ class ServerSettings:
     ollama_model: str = DEFAULT_OLLAMA_MODEL
     ollama_keep_alive: str = DEFAULT_KEEP_ALIVE
     """How long Ollama keeps the model in memory after the last page (e.g. `30m`, `2h`)."""
+    cache_dir: Path | None = None
+    """Folder of the translation cache; `None` keeps it in memory (tests)."""
+    cache_max_mb: int = DEFAULT_CACHE_MAX_MB
     demo_delay_ms: int = DEFAULT_DEMO_DELAY_MS
     max_image_bytes: int = MAX_IMAGE_BYTES
     max_image_pixels: int = MAX_IMAGE_PIXELS
@@ -97,6 +105,8 @@ def load_settings(environment: Mapping[str, str]) -> ServerSettings:
         ollama_model=environment.get(OLLAMA_MODEL_VARIABLE, "").strip() or DEFAULT_OLLAMA_MODEL,
         ollama_keep_alive=environment.get(OLLAMA_KEEP_ALIVE_VARIABLE, "").strip()
         or DEFAULT_KEEP_ALIVE,
+        cache_dir=_read_cache_dir(environment),
+        cache_max_mb=_read_cache_max_mb(environment.get(CACHE_MAX_MB_VARIABLE)),
         demo_delay_ms=_read_non_negative_int(
             DEMO_DELAY_VARIABLE, environment.get(DEMO_DELAY_VARIABLE), DEFAULT_DEMO_DELAY_MS
         ),
@@ -121,6 +131,27 @@ def apply_env_file(path: Path, environment: MutableMapping[str, str]) -> None:
         return
     for key, value in read_env_file(path).items():
         environment.setdefault(key, value)
+
+
+def default_cache_dir(environment: Mapping[str, str]) -> Path:
+    """Default cache folder, outside the repository.
+
+    `$XDG_CACHE_HOME/kmoverlay-translate`, or `~/.cache/kmoverlay-translate`.
+    """
+    base = environment.get(XDG_CACHE_HOME_VARIABLE, "").strip()
+    return (Path(base) if base else Path.home() / ".cache") / CACHE_FOLDER_NAME
+
+
+def _read_cache_dir(environment: Mapping[str, str]) -> Path:
+    raw = environment.get(CACHE_DIR_VARIABLE, "").strip()
+    return Path(raw).expanduser() if raw else default_cache_dir(environment)
+
+
+def _read_cache_max_mb(raw: str | None) -> int:
+    value = _read_non_negative_int(CACHE_MAX_MB_VARIABLE, raw, DEFAULT_CACHE_MAX_MB)
+    if value < 1:
+        raise SettingsError(f"{CACHE_MAX_MB_VARIABLE} deve ser pelo menos 1")
+    return value
 
 
 def _read_pipeline(raw: str | None) -> PipelineName:

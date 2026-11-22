@@ -71,3 +71,5 @@ class HealthResponse(BaseModel):
     gpu_name: str | None
     models_loaded: bool
     translator: str
+    pipeline_version: str
+    """Same as in the translations: a client cache entry with another version is stale."""
