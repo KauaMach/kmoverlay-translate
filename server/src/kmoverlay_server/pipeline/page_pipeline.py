@@ -45,6 +45,8 @@ class PagePipeline(Protocol):
 
     gpu_name: str | None
     models_loaded: bool
+    translator_name: str
+    """Shown in `/v1/health`, e.g. `ollama:gemma3:4b`."""
 
     def translate(
         self, images: Sequence[Image.Image], options: PipelineOptions

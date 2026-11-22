@@ -5,6 +5,7 @@ import pytest
 
 from kmoverlay_server import cli
 from kmoverlay_server.result_cache import MemoryResultCache
+from kmoverlay_server.settings import ServerSettings
 
 TOKEN = "a-token-long-enough-123"
 
@@ -55,3 +56,11 @@ def test_serve_reads_the_env_file_and_starts_uvicorn(
 
     assert exit_code == cli.EXIT_OK
     assert started == {"host": "127.0.0.1", "port": 9100}
+
+
+def test_the_server_pipeline_follows_the_settings() -> None:
+    real = cli.create_server_pipeline(ServerSettings(token=TOKEN, ollama_model="qwen3:4b"))
+    demo = cli.create_server_pipeline(ServerSettings(token=TOKEN, pipeline="demo"))
+
+    assert real.translator_name == "ollama:qwen3:4b"
+    assert demo.translator_name == "demo"

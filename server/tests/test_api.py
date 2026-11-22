@@ -15,6 +15,7 @@ from kmoverlay_server.pipeline.demo_pipeline import (
     MIN_BANNER_HEIGHT,
 )
 from kmoverlay_server.pipeline.page_pipeline import PageResult, PipelineOptions
+from kmoverlay_server.pipeline.translators import TranslatorError
 from kmoverlay_server.settings import ServerSettings
 from tests.conftest import TEST_TOKEN, CountingPipeline, make_client, png_bytes
 
@@ -54,7 +55,12 @@ def test_health_reports_the_pipeline(client: TestClient, auth_headers: dict[str,
     response = client.get("/v1/health", headers=auth_headers)
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "gpu_name": None, "models_loaded": False}
+    assert response.json() == {
+        "status": "ok",
+        "gpu_name": None,
+        "models_loaded": False,
+        "translator": "demo",
+    }
 
 
 def test_unknown_host_names_are_refused(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -217,3 +223,22 @@ def test_unexpected_errors_hide_the_details(auth_headers: dict[str, str]) -> Non
     assert response.status_code == 500
     assert error_code(response) == "internal-error"
     assert "secret" not in response.text
+
+
+class UnavailableTranslatorPipeline(CountingPipeline):
+    def translate(
+        self, images: Sequence[Image.Image], options: PipelineOptions
+    ) -> list[PageResult]:
+        raise TranslatorError("O Ollama não está rodando em http://127.0.0.1:11434.")
+
+
+def test_an_unavailable_translator_is_a_503_with_the_reason(auth_headers: dict[str, str]) -> None:
+    client = make_client(ServerSettings(token=TEST_TOKEN), UnavailableTranslatorPipeline())
+
+    response = translate(client, auth_headers, [png_bytes()])
+
+    assert response.status_code == 503
+    assert response.json()["error"] == {
+        "code": "translator-unavailable",
+        "message": "O Ollama não está rodando em http://127.0.0.1:11434.",
+    }

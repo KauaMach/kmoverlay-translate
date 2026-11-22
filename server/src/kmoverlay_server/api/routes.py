@@ -27,10 +27,12 @@ from kmoverlay_server.api.schemas import (
     TranslateResponse,
 )
 from kmoverlay_server.pipeline.page_pipeline import PagePipeline, PageResult, PipelineOptions
+from kmoverlay_server.pipeline.translators import TranslatorError
 from kmoverlay_server.result_cache import MemoryResultCache
 from kmoverlay_server.settings import ServerSettings
 
 TOO_MANY_IMAGES_CODE = "too-many-images"
+TRANSLATOR_UNAVAILABLE_CODE = "translator-unavailable"
 NOT_CACHED_CODE = "not-cached"
 NOT_CACHED_MESSAGE = "Estas imagens ainda não foram traduzidas com estas opções."
 INVALID_OPTIONS_MESSAGE = "As opções não seguem o contrato da API."
@@ -53,7 +55,10 @@ def create_api_router(
     @router.get("/health")
     async def health() -> HealthResponse:
         return HealthResponse(
-            status="ok", gpu_name=pipeline.gpu_name, models_loaded=pipeline.models_loaded
+            status="ok",
+            gpu_name=pipeline.gpu_name,
+            models_loaded=pipeline.models_loaded,
+            translator=pipeline.translator_name,
         )
 
     @router.post("/translate")
@@ -72,7 +77,12 @@ def create_api_router(
             return cached
         started = time.perf_counter()
         async with work_lock:
-            results = await run_in_threadpool(run_pipeline, pipeline, uploaded, parsed_options)
+            try:
+                results = await run_in_threadpool(run_pipeline, pipeline, uploaded, parsed_options)
+            except TranslatorError as error:
+                raise ApiError(
+                    HTTPStatus.SERVICE_UNAVAILABLE, TRANSLATOR_UNAVAILABLE_CODE, str(error)
+                ) from error
         elapsed_ms = round((time.perf_counter() - started) * MILLISECONDS_PER_SECOND)
         response = TranslateResponse(
             pipeline_version=pipeline.version, results=results, timings_ms={"total": elapsed_ms}

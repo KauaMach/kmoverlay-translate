@@ -36,6 +36,7 @@ class DemoPipeline:
     gpu_name: str | None = None
     # No model is loaded: the options page shows "modelos não carregados", which is the truth.
     models_loaded = False
+    translator_name = "demo"
 
     def __init__(self, delay_ms: int, sleep: Callable[[float], None] = time.sleep) -> None:
         self._delay_seconds = delay_ms / MILLISECONDS_PER_SECOND

@@ -3,13 +3,22 @@
 from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
+
+from kmoverlay_server.pipeline.translators.ollama import DEFAULT_OLLAMA_MODEL, DEFAULT_OLLAMA_URL
 
 TOKEN_VARIABLE = "KMOVERLAY_TOKEN"
 HOST_VARIABLE = "KMOVERLAY_HOST"
 PORT_VARIABLE = "KMOVERLAY_PORT"
 ALLOWED_HOSTS_VARIABLE = "KMOVERLAY_ALLOWED_HOSTS"
 DEMO_DELAY_VARIABLE = "KMOVERLAY_DEMO_DELAY_MS"
+PIPELINE_VARIABLE = "KMOVERLAY_PIPELINE"
+OLLAMA_URL_VARIABLE = "KMOVERLAY_OLLAMA_URL"
+OLLAMA_MODEL_VARIABLE = "KMOVERLAY_OLLAMA_MODEL"
 
+PipelineName = Literal["translate", "demo"]
+PIPELINE_NAMES: tuple[PipelineName, ...] = ("translate", "demo")
+DEFAULT_PIPELINE: PipelineName = "translate"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 DEFAULT_DEMO_DELAY_MS = 800
@@ -36,6 +45,10 @@ class ServerSettings:
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
     extra_allowed_hosts: tuple[str, ...] = ()
+    pipeline: PipelineName = DEFAULT_PIPELINE
+    """`translate` reads and translates; `demo` only marks the images (no models needed)."""
+    ollama_url: str = DEFAULT_OLLAMA_URL
+    ollama_model: str = DEFAULT_OLLAMA_MODEL
     demo_delay_ms: int = DEFAULT_DEMO_DELAY_MS
     max_image_bytes: int = MAX_IMAGE_BYTES
     max_image_pixels: int = MAX_IMAGE_PIXELS
@@ -72,6 +85,9 @@ def load_settings(environment: Mapping[str, str]) -> ServerSettings:
         host=environment.get(HOST_VARIABLE, "").strip() or DEFAULT_HOST,
         port=_read_port(environment.get(PORT_VARIABLE)),
         extra_allowed_hosts=_read_list(environment.get(ALLOWED_HOSTS_VARIABLE)),
+        pipeline=_read_pipeline(environment.get(PIPELINE_VARIABLE)),
+        ollama_url=environment.get(OLLAMA_URL_VARIABLE, "").strip() or DEFAULT_OLLAMA_URL,
+        ollama_model=environment.get(OLLAMA_MODEL_VARIABLE, "").strip() or DEFAULT_OLLAMA_MODEL,
         demo_delay_ms=_read_non_negative_int(
             DEMO_DELAY_VARIABLE, environment.get(DEMO_DELAY_VARIABLE), DEFAULT_DEMO_DELAY_MS
         ),
@@ -96,6 +112,14 @@ def apply_env_file(path: Path, environment: MutableMapping[str, str]) -> None:
         return
     for key, value in read_env_file(path).items():
         environment.setdefault(key, value)
+
+
+def _read_pipeline(raw: str | None) -> PipelineName:
+    value = (raw or "").strip() or DEFAULT_PIPELINE
+    for name in PIPELINE_NAMES:
+        if value == name:
+            return name
+    raise SettingsError(f"{PIPELINE_VARIABLE} deve ser {' ou '.join(PIPELINE_NAMES)}")
 
 
 def _unquote(value: str) -> str:

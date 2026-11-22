@@ -70,3 +70,4 @@ class HealthResponse(BaseModel):
     status: Literal["ok"]
     gpu_name: str | None
     models_loaded: bool
+    translator: str

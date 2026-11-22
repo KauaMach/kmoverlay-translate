@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from kmoverlay_server.pipeline.translators.ollama import DEFAULT_OLLAMA_MODEL, DEFAULT_OLLAMA_URL
 from kmoverlay_server.settings import (
     DEFAULT_DEMO_DELAY_MS,
     DEFAULT_HOST,
@@ -86,3 +87,28 @@ def test_a_missing_env_file_is_ignored(tmp_path: Path) -> None:
     apply_env_file(tmp_path / "missing.env", environment)
 
     assert environment == {}
+
+
+def test_the_real_pipeline_and_ollama_are_the_defaults() -> None:
+    settings = load_settings({"KMOVERLAY_TOKEN": TOKEN})
+
+    assert settings.pipeline == "translate"
+    assert settings.ollama_url == DEFAULT_OLLAMA_URL
+    assert settings.ollama_model == DEFAULT_OLLAMA_MODEL
+
+
+def test_the_pipeline_and_the_ollama_model_can_be_chosen() -> None:
+    settings = load_settings(
+        {
+            "KMOVERLAY_TOKEN": TOKEN,
+            "KMOVERLAY_PIPELINE": "demo",
+            "KMOVERLAY_OLLAMA_URL": "http://192.168.0.10:11434",
+            "KMOVERLAY_OLLAMA_MODEL": "qwen3:4b",
+        }
+    )
+
+    assert settings.pipeline == "demo"
+    assert settings.ollama_url == "http://192.168.0.10:11434"
+    assert settings.ollama_model == "qwen3:4b"
+    with pytest.raises(SettingsError, match="KMOVERLAY_PIPELINE"):
+        load_settings({"KMOVERLAY_TOKEN": TOKEN, "KMOVERLAY_PIPELINE": "fast"})
