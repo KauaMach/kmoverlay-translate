@@ -1,0 +1,37 @@
+[project]
+name = "kmoverlay-server"
+version = "0.1.0"
+description = "Local server that translates comic images for the KMOverlay browser extension."
+license = "GPL-3.0-only"
+# RapidOCR and PaddlePaddle support Python up to 3.13 (see docs/plano-implementacao.md).
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "fastapi>=0.165.0",
+    "pillow>=13.0.0",
+    "python-multipart>=0.0.34",
+    "uvicorn>=0.54.0",
+]
+
+[project.scripts]
+kmoverlay = "kmoverlay_server.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "N", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.2.0",
+    "ruff>=0.17.6",
+]
