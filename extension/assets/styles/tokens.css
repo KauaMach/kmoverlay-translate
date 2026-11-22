@@ -1,0 +1,46 @@
+/* Design tokens from the "KMOverlay Translate — UX/UI" canvas.
+   Declared on :host too so shadow-DOM components on web pages get them. */
+:root,
+:host {
+  --color-ink: #16161a;
+  --color-text-soft: #3f3e3a;
+  --color-text-muted: #5b5a56;
+  --color-text-faint: #a8a6a0;
+  --color-on-dark: #ffffff;
+  --color-on-dark-muted: #d6d4cd;
+
+  --color-surface: #ffffff;
+  --color-page: #f4f3ef;
+  --color-track: #f0efea;
+  --color-canvas: #e9e8e4;
+
+  --color-border: #dedcd5;
+  --color-border-subtle: #eceae4;
+  --color-border-card: #e2e0da;
+  --color-border-strong: #cfcdc6;
+
+  --color-accent: #c2410c;
+  --color-accent-hover: #9a3412;
+  --color-accent-soft: #ffedd5;
+
+  --color-success-bg: #dcfce7;
+  --color-success-text: #166534;
+  --color-success-dot: #16a34a;
+
+  --color-danger-bg: #fee2e2;
+  --color-danger-surface: #fef2f2;
+  --color-danger-border: #fecaca;
+  --color-danger-text: #991b1b;
+  --color-danger-dot: #dc2626;
+
+  --color-info-border: #bfdbfe;
+  --color-info-text: #1e40af;
+
+  --font-body: 'KMOverlay Inter', Inter, system-ui, sans-serif;
+  --font-display: 'KMOverlay Space Grotesk', 'Space Grotesk', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'JetBrains Mono', monospace;
+
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --size-touch: 44px;
+}

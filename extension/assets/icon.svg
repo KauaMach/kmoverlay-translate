@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="28" fill="#16161A"/>
+  <!-- "KM" monogram drawn as shapes, so rendering the PNGs needs no font. -->
+  <g fill="#FFFFFF">
+    <rect x="18" y="38" width="12" height="52"/>
+    <polygon points="30,60 46,38 59,38 37,70"/>
+    <polygon points="37,57 59,90 46,90 30,66"/>
+    <rect x="68" y="38" width="11" height="52"/>
+    <rect x="98" y="38" width="11" height="52"/>
+    <polygon points="68,38 80,38 88.5,61 97,38 109,38 93.5,77 83.5,77"/>
+  </g>
+</svg>
