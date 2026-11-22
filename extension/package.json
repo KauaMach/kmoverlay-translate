@@ -1,0 +1,24 @@
+{
+  "name": "kmoverlay-extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser extension that translates comic balloons and page text in place, using a local server.",
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox --mv3",
+    "build": "wxt build",
+    "build:firefox": "wxt build -b firefox --mv3",
+    "test": "vitest run",
+    "typecheck": "wxt prepare && tsc --noEmit",
+    "icons": "for size in 16 32 48 128; do rsvg-convert -w $size -h $size assets/icon.svg -o public/icon/$size.png; done",
+    "postinstall": "wxt prepare"
+  },
+  "devDependencies": {
+    "happy-dom": "21.0.4",
+    "typescript": "6.0.3",
+    "vitest": "5.1.1",
+    "wxt": "0.21.5"
+  }
+}
