@@ -196,8 +196,11 @@ uv run kmoverlay translate pagina.png -o traduzida.png
 uv run pytest
 
 # lint e formatação
-uv run ruff check src tests
-uv run ruff format src tests
+uv run ruff check src tests benchmarks
+uv run ruff format src tests benchmarks
+
+# comparar modelos do Ollama na tradução (resultados em docs/benchmark-fase-0.md)
+uv run python benchmarks/compare_translators.py --models gemma3:4b qwen3:4b
 ```
 
 ### Estrutura
@@ -211,7 +214,8 @@ extension/public/        # ícones PNG e fontes embutidas (OFL)
 extension/tests/         # testes Vitest
 server/src/kmoverlay_server/  # API (api/), pipelines (pipeline/), leitor de demonstração (demo/), CLI
 server/tests/            # testes pytest
-docs/                    # plano de implementação
+server/benchmarks/       # conjuntos e scripts do benchmark da Fase 0
+docs/                    # plano de implementação e resultados do benchmark
 samples/                 # páginas reais de teste, fora do git
 ```
 
