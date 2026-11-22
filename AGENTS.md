@@ -149,9 +149,9 @@ Extensão de navegador que traduz o texto das imagens (balões de HQ, mangá e w
 
 ### Stack
 
-- Linguagens: TypeScript (extensão); Python 3.12 (servidor, ainda não criado)
-- Frameworks: WXT (Manifest V3, Chrome e Firefox), sem framework de UI; FastAPI no servidor
-- Testes: Vitest + happy-dom na extensão
+- Linguagens: TypeScript (extensão); Python 3.12 (servidor, gerenciado com `uv`)
+- Frameworks: WXT (Manifest V3, Chrome e Firefox), sem framework de UI; FastAPI + Uvicorn + Pillow no servidor
+- Testes: Vitest + happy-dom na extensão; pytest no servidor
 - Banco de dados: nenhum (`storage.local` e IndexedDB no navegador; cache em disco no servidor)
 
 ### Comandos
@@ -180,15 +180,34 @@ npm run build:firefox  # Firefox → .output/firefox-mv3
 npm run icons
 ```
 
+Os comandos do servidor rodam dentro de `server/`. Antes da primeira vez, copie `.env.example` para `.env` e preencha `KMOVERLAY_TOKEN` (o mesmo token vai nas opções da extensão).
+
+```bash
+# instalar dependências (baixa o Python 3.12 se preciso)
+uv sync
+
+# rodar (http://127.0.0.1:8000; leitor de demonstração em /demo)
+uv run kmoverlay serve
+
+# testes
+uv run pytest
+
+# lint e formatação
+uv run ruff check src tests
+uv run ruff format src tests
+```
+
 ### Estrutura
 
 ```
-extension/entrypoints/   # background, popup e opções (content script a partir da Fase 3)
+extension/entrypoints/   # background, popup, opções e content script (registrado só nos sites ligados)
 extension/components/    # controles e componentes de página (shadow DOM)
 extension/utils/         # configurações, mensagens, status do servidor, helpers de DOM
 extension/assets/        # tokens visuais (CSS) e ícone em SVG
 extension/public/        # ícones PNG e fontes embutidas (OFL)
 extension/tests/         # testes Vitest
+server/src/kmoverlay_server/  # API (api/), pipelines (pipeline/), leitor de demonstração (demo/), CLI
+server/tests/            # testes pytest
 docs/                    # plano de implementação
 samples/                 # páginas reais de teste, fora do git
 ```
@@ -201,3 +220,5 @@ samples/                 # páginas reais de teste, fora do git
 - Só o background fala com o servidor; o token fica em `storage.local`.
 - Recursos de fases futuras ficam escondidos na interface até existirem.
 - Páginas reais de teste ficam em `samples/` e nunca vão para o git.
+- Todo endpoint `/v1` do servidor exige o token; o servidor não envia cabeçalhos CORS e só responde aos nomes de `Host` permitidos.
+- Até a Fase 1, o servidor usa o pipeline de demonstração (`DemoPipeline`), que só marca as imagens.
