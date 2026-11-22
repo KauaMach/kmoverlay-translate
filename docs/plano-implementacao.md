@@ -1,16 +1,18 @@
 # Plano de implementação
 
-Plano para construir a extensão de tradução de mangá descrita em [extensao-traducao.md](../extensao-traducao.md). Versão inicial de 21/11/2026.
+Plano para construir a extensão de tradução de imagens e texto descrita em [extensao-traducao.md](../extensao-traducao.md). Revisado em 22/11/2026, com as afirmações técnicas conferidas em fontes oficiais. O que ainda depende de teste está marcado com "(verificar)".
 
 ## Premissas
 
-- Idiomas de origem nas imagens: japonês, coreano, chinês, inglês, espanhol e russo. A implementação começa pelo inglês; os demais entram na Fase 4c.
-- Idioma de origem no texto da página: qualquer um que o LLM entenda.
-- Idioma de destino: configurável. O padrão é português do Brasil, o único testado no início.
-- Escopo: texto dentro das imagens (balões) e texto comum das páginas.
-- Uso pessoal, sem distribuição comercial.
-- Navegadores: Chrome e Firefox no PC; Firefox no Android.
-- Arquitetura: opção A do estudo, com a extensão no navegador e o servidor local em Python.
+- **Escopo:** texto dentro das imagens (balões de HQ, mangá e webtoon) e texto comum das páginas, mantendo a formatação.
+- **Idiomas de origem nas imagens:** inglês no MVP; depois japonês, coreano, chinês, espanhol e russo (Fase 5).
+- **Conteúdo em inglês do MVP:** HQ, mangá traduzido (leitura da direita para a esquerda) e webtoon (tiras longas fatiadas em várias imagens).
+- **Origem no texto da página:** qualquer idioma que o tradutor entenda.
+- **Destino:** configurável. O padrão é português do Brasil, o único testado no início.
+- **Uso:** pessoal. O repositório é público, sob GPL-3.0.
+- **Navegadores:** Chrome e Firefox no PC; Firefox no Android.
+- **Arquitetura:** extensão no navegador e servidor local em Python (opção A do estudo), com pipeline próprio.
+- **MVP:** Fases 0 a 4 (inglês, imagens e texto da página, no PC).
 
 ### Hardware de referência
 
@@ -18,188 +20,242 @@ Plano para construir a extensão de tradução de mangá descrita em [extensao-t
 |---|---|
 | GPU | NVIDIA RTX 3050 Laptop, 6 GB de VRAM |
 | RAM | 16 GB |
-| Ferramentas | Python 3.15 (sistema), Node 22, `uv`, `npm`; Ollama não instalado |
+| Ferramentas | Python 3.15 (sistema), Node 22, `uv`, `npm`, `rsvg-convert`; Ollama não instalado |
 
 ## Ajustes em relação ao estudo
 
-1. **Captura da imagem.** O background script baixa os bytes da imagem, o que não sofre bloqueio de CORS quando a extensão tem `host_permissions`, e envia esses bytes ao servidor.
-   - O canvas fica bloqueado por CORS em imagens de outros domínios.
-   - `captureVisibleTab` só pega a parte visível, captura o próprio overlay e tem limite de chamadas por segundo. Fica só como alternativa.
-   - Enviar apenas a URL para o servidor baixar não funciona bem: muitos sites bloqueiam hotlink.
-2. **Só o background fala com o servidor.** Uma página HTTPS chamando `http://localhost` ou o IP do PC pelo content script é bloqueada como conteúdo misto e pela proteção de rede privada do Chrome.
-3. **Cache em duas camadas.** IndexedDB no navegador e cache em disco no servidor, que o PC e o celular compartilham. A chave é o SHA-256 da imagem + o idioma de destino + a versão do pipeline. Sem a versão, uma melhoria no pipeline nunca substitui as traduções antigas.
-4. **Tradução offline com LLM.**
-   - Argos: provavelmente traduz ja→pt passando pelo inglês, o que piora o resultado (verificar).
-   - NLLB: traduz direto entre todos os idiomas do escopo, e as versões destiladas (600M e 1,3B parâmetros) ocupam menos VRAM que um LLM de 3 a 4B. Por outro lado, traduz frase por frase, sem o contexto da página. A licença (CC-BY-NC) proíbe apenas o uso comercial, o que não afeta o uso pessoal; só vira problema se o projeto for distribuído comercialmente.
-   - Escolha: um LLM local via Ollama que traduz a página inteira numa só chamada, com os balões numerados em ordem de leitura e resposta em JSON. Isso dá contexto ao modelo e reduz a latência. O NLLB é testado na Fase 0 como opção mais leve.
-5. **Limite de 6 GB de VRAM.** Não cabe um LLM de 7B junto com detecção, OCR e LaMa.
-   - Começar com um modelo de 3 a 4B quantizado e medir.
-   - Apagar o texto pintando com a cor do balão por padrão; usar o LaMa só quando o fundo não for liso.
-6. **PWA no celular fica para o fim.**
-   - Acessada por `http://IP`, a página não é um contexto seguro: fica sem service worker e sem `crypto.subtle`.
-   - O servidor teria de baixar as páginas do site de mangá no lugar do navegador, o que esbarra nos bloqueios.
-   - Se for feita, usar o HTTPS do Tailscale.
-7. **Firefox.** No Manifest V3 do Firefox o background não é um service worker (usa `background.scripts`). O build precisa gerar um manifest para cada navegador.
-8. **Versão do Python.** Fixar Python 3.12 no projeto com `uv`, porque PyTorch e onnxruntime costumam demorar a publicar versões para Python novo.
-9. **Não reinventar o pipeline.** O manga-image-translator já implementa o pipeline inteiro e tem modo servidor. Ele serve de referência de qualidade e de tempo na Fase 0. A licença deve ser GPL-3.0 (confirmar); copiar código dele torna o projeto GPL.
+1. **Captura da imagem.** Ordem de tentativa:
+   - Ler da própria página, pelo content script, quando a imagem é da mesma origem ou é `data:`. Imagens `blob:` também devem funcionar assim (verificar).
+   - Baixar pelo background. Com `host_permissions`, o fetch do background não sofre bloqueio de CORS (confirmado). Sites que bloqueiam hotlink checam o `Referer`, que pode ser ajustado com `declarativeNetRequest` nas requisições da própria extensão (verificar).
+   - Se nada funcionar, a imagem fica marcada como "sem suporte" até a Fase 8 (captura da aba). O `captureVisibleTab` do Chrome aceita no máximo 2 chamadas por segundo (confirmado).
+2. **Só o background fala com o servidor.** Precisa de `host_permissions` com entrada `http://` própria para o servidor. O Local Network Access do Chrome 142+ não deve afetar extensões com a permissão certa, mas isso vem de fala da equipe do Chrome, não da documentação (verificar). Mixed content a partir do background também não é documentado (verificar).
+3. **Cache.**
+   - Chave: hashes dos bytes originais + JSON canônico das opções (origem, destino, direção de leitura, série, flags) + versão de cada etapa.
+   - O servidor guarda cada etapa separada (detecção e OCR, tradução, renderização), para que mudar a renderização não exija rodar o LLM de novo.
+   - IndexedDB (no background, origem da extensão) e disco têm teto de tamanho e descarte LRU.
+   - Imagens sem texto também são cacheadas, para não serem reenviadas a cada rolagem.
+   - O hash é calculado antes de qualquer recompressão (ex.: WebP no celular).
+4. **Tradução.** O modelo é escolhido na Fase 0; a interface é a mesma para todos: segmentos + contexto → segmentos. Candidatos:
+   - LLM de 3 a 4B via Ollama, traduzindo a página inteira numa chamada, com saída validada por JSON schema (suportado desde a versão 0.5.0, confirmado). Dá contexto ao modelo e reduz chamadas.
+   - NLLB 600M ou 1.3B em int8 via CTranslate2 (≈0,6 e ≈1,4 GB). Traduz direto entre todos os idiomas do escopo, mas frase por frase. Em fp16 o 1.3B (≈2,7 GB) não é mais leve que um LLM de 3 a 4B. Licença CC-BY-NC, compatível com uso pessoal.
+   - Argos en→pb (direto, confirmado), a opção mais leve para inglês.
+   - A licença de cada modelo fica registrada; alguns Qwen pequenos têm licença restrita (verificar).
+5. **VRAM e stack de IA.**
+   - Detecção (comic-text-detector em ONNX), OCR (RapidOCR, que roda os modelos do PaddleOCR em ONNX Runtime sem o PaddlePaddle) e LaMa (ONNX, entrada fixa de 512×512, aplicado por recorte) rodam em ONNX Runtime, primeiro na CPU e na GPU só se for preciso.
+   - A GPU fica para o Ollama, com `keep_alive` longo (o padrão descarrega o modelo após 5 minutos parado).
+   - O MVP não usa PyTorch; ele só entra com o manga-ocr (japonês, Fase 5). PaddlePaddle GPU e PyTorch fixam versões diferentes das bibliotecas CUDA e quebram um ao outro no mesmo ambiente (relatado em issues).
+   - A Fase 0 tem um teste de ir/não ir: tudo carregado ao mesmo tempo, com o pico de VRAM medido.
+6. **PWA no celular:** fora do plano. Se um dia for feita, precisa de HTTPS (Tailscale), porque `http://IP` não é contexto seguro.
+7. **Firefox.**
+   - O Firefox não suporta `background.service_worker`; o manifest declara os dois (`scripts` e `service_worker`). O Chrome 121+ ignora `scripts` e o Firefox 121+ usa `scripts`.
+   - O WXT gera os builds dos dois navegadores a partir do mesmo código (o do Firefox com `--mv3`).
+   - A partir do Firefox 127, `host_permissions` são concedidas na instalação, mas o usuário pode revogá-las; a extensão confere com `permissions.contains`.
+   - O Firefox release exige XPI assinado para instalação permanente, também no desktop. As chaves da AMO ficam no `.env`.
+8. **Python 3.12.** O PyTorch já suporta 3.15, mas RapidOCR e PaddlePaddle vão até 3.13.
+9. **Código de terceiros.** O manga-image-translator (GPL-3.0, ativo, com modo API) é a referência de qualidade e tempo. O comic-text-detector também é GPL-3.0 e foi treinado com mangá, HQ antiga e imagens sintéticas. Com o projeto em GPL-3.0, reaproveitar código dos dois é permitido, citando a origem.
+10. **Privacidade e segurança.**
+    - Token obrigatório em todos os endpoints, inclusive `/v1/health` (a interface usa o health para testar o token). Na extensão, o token fica em `storage.local`.
+    - O servidor não envia cabeçalhos CORS (desnecessários com `host_permissions`) e confere o cabeçalho `Host`, contra DNS rebinding.
+    - Escuta em `127.0.0.1` por padrão; acesso pela rede só com opção explícita, de preferência pelo Tailscale (token em HTTP puro trafega em claro).
+    - Content scripts só nos sites ligados pelo usuário. Tradução de texto desligada por padrão. Textos traduzidos nunca vão para logs.
+11. **Dados de teste.** Os testes automáticos usam imagens sintéticas geradas pelos próprios testes. Páginas reais ficam em `samples/`, fora do git; só um manifesto (URL, SHA-256, anotações) é versionado. Pepper&Carrot fica de fora: apesar da licença CC BY 4.0, o autor publicou em outubro de 2026 um aviso proibindo derivações por IA.
 
 ## Estrutura do repositório
 
 ```
 kmoverlay-translate/
+├── extension/                     # WXT, TypeScript puro
+│   ├── entrypoints/               # background, popup, options (content script na Fase 3)
+│   ├── components/                # overlay da imagem, menu do celular, controles
+│   ├── utils/                     # configurações, mensagens, status do servidor
+│   ├── assets/                    # tokens visuais, ícone
+│   ├── public/                    # ícones PNG e fontes (OFL)
+│   └── tests/
 ├── server/                        # Python 3.12, FastAPI, uv
 │   ├── src/kmoverlay_server/
 │   │   ├── api/                   # rotas, autenticação, schemas
 │   │   ├── pipeline/
 │   │   │   ├── text_detector.py
-│   │   │   ├── ocr_readers/       # interface + manga-ocr (ja) + PaddleOCR (demais)
-│   │   │   ├── translators/       # interface + ollama (nuvem depois)
+│   │   │   ├── ocr_readers/       # interface + RapidOCR (MVP) + manga-ocr (japonês)
+│   │   │   ├── translators/       # interface + Ollama, NLLB, Argos
 │   │   │   ├── inpainter.py
 │   │   │   ├── text_renderer.py
 │   │   │   └── page_pipeline.py   # encadeia as etapas
-│   │   ├── job_queue.py           # 1 worker de GPU, prioridade, cancelamento
-│   │   ├── result_cache.py
+│   │   ├── job_queue.py           # 1 worker, classes de prioridade, cancelamento
+│   │   ├── result_cache.py        # cache por etapa, LRU
 │   │   ├── settings.py
-│   │   └── cli.py
-│   └── tests/fixtures/            # páginas de exemplo
-├── extension/                     # TypeScript, Manifest V3
-│   └── src/{background,content,popup,options,shared}/
-└── docs/
+│   │   └── cli.py                 # kmoverlay translate | kmoverlay serve
+│   ├── benchmarks/                # scripts e manifesto do conjunto de teste
+│   └── tests/
+├── samples/                       # páginas reais de teste, fora do git
+├── docs/
+└── LICENSE                        # GPL-3.0
 ```
 
 ## Contrato da API
 
+Todos os endpoints exigem `Authorization: Bearer <token>`.
+
 ```
-POST /v1/translate     (Authorization: Bearer <token>, multipart: image, source_lang, target_lang)
-  → { image_sha256, pipeline_version, image_webp_base64,
-      regions: [{ box, source_text, translated_text }],
-      timings_ms: { detect, ocr, translate, inpaint, render } }
-GET  /v1/translate/{sha256}?target_lang=pt-BR   → resultado ou 404 (evita reenviar a imagem)
-POST /v1/translate-text (Authorization: Bearer <token>, JSON: { texts, source_lang, target_lang })
-  → { translations }                            (mesma ordem de texts)
-GET  /v1/health                                 → modelos carregados, GPU
+POST /v1/translate        multipart: images[] (uma ou várias, em ordem, para tiras) + options (JSON)
+  options = { source_lang, target_lang, reading_direction: ltr | rtl | strip,
+              output: image | regions, priority: visible | prefetch, series_id? }
+  → { results: [{ image_sha256, image_webp_base64?,
+                  regions: [{ polygon, source_text, translated_text }] }],
+      timings_ms }
+POST /v1/lookup           JSON: { image_sha256s, options } → mesmo formato ou 404 (sem reenviar a imagem)
+POST /v1/translate-text   JSON: { texts, source_lang (aceita "auto"), target_lang, context? }
+  → { translations, detected_lang }
+GET  /v1/health           → { status, gpu_name, models_loaded }
 ```
 
-O campo `regions` permite depurar o resultado, alternar entre original e tradução e, no futuro, editar a tradução ou desenhar o texto no próprio cliente.
+- `polygon` usa pixels da imagem original; o cliente converte para a escala exibida.
+- `output: regions` devolve só as posições e os textos, sem a imagem renderizada (usado na captura da aba).
+- Erros: `401` (token), `413` (imagem grande demais), `422` (entrada inválida), `429` (fila cheia) e `503` (modelo ou Ollama indisponível), sempre com corpo `{ error: { code, message } }`.
+- O servidor sobe com `uv run kmoverlay serve`, o comando que o popup mostra quando não encontra o servidor.
+
+## Interface
+
+A UI da extensão foi desenhada no canvas "KMOverlay Translate — UX/UI" e implementada antes da Fase 0: popup, página de opções e componentes de página. O content script que liga esses componentes à fila entra na Fase 3.
+
+- **Popup:** status do servidor (Conectado/Offline), site atual com "Ativo neste site" e os switches de imagens e texto, idiomas De → Para, progresso do capítulo e botão de alternar original e tradução. Offline, mostra o endereço, o comando para subir o servidor e o que continua funcionando pelo cache.
+- **Opções:** Servidor (endereço, token, testar conexão), Idiomas, Sites, Tradução, Atalhos e Cache. Salvamento automático.
+- **Na imagem:** estados "na fila", "traduzindo", "traduzida" (controles Tradução/Original só ao passar o mouse) e "erro" (com "Tentar de novo"). Os indicadores ficam no topo da imagem, sem cobrir os balões.
+- **No celular:** botão flutuante "KM" com menu (status, mostrar original, pausar no site, abrir painel).
+- **Atalhos:** Alt+T alterna original e tradução; Alt+Shift+K liga ou desliga no site atual; Alt+Shift+C captura a área visível (Fase 8).
+- Recursos de fases futuras (captura da aba, glossário) ficam escondidos até existirem.
 
 ## Fases
 
-### Fase 0: validação técnica
+### Fase 0: validação técnica (só inglês)
 
-- Rodar `git init` e preencher a seção "Projeto" do `AGENTS.md`.
-- Instalar o Ollama e testar 2 ou 3 modelos de 3 a 4B.
-- Testar o NLLB (versões destiladas de 600M e 1,3B) como opção mais leve, comparando qualidade, tempo e VRAM com os LLMs nas mesmas falas. Verificar também se ele preserva os marcadores de formatação da Fase 3b.
-- Montar um conjunto de 15 a 20 páginas de teste em inglês (balão branco, fundo complexo, onomatopeias e texto em caixa alta), mais algumas páginas de cada um dos outros idiomas, incluindo texto vertical em japonês.
-- Medir tempo e VRAM de cada etapa e rodar o manga-image-translator nas mesmas páginas.
-- Testar o detector e o PaddleOCR em todas as páginas, começando pelas em inglês. O comic-text-detector parece ter sido feito principalmente para mangá; confirmar que funciona bem em HQ ocidental.
+- Preencher a seção "Projeto" do `AGENTS.md` com os comandos do servidor.
+- **Benchmark de modelos:**
+  - Conjunto em inglês (HQ, mangá traduzido e webtoon) em `samples/`, anotado com caixas e transcrições.
+  - Tradução: LLMs de 3 a 4B, NLLB em int8 e Argos nas mesmas falas, incluindo o teste dos marcadores de formatação da Fase 4.
+  - manga-image-translator nas mesmas páginas, como base de comparação.
+  - Detecção e OCR em ONNX Runtime, comparando CPU e GPU.
+  - Teste de ir/não ir de VRAM com tudo carregado ao mesmo tempo.
+- **Esqueleto ponta a ponta:** servidor falso que devolve a imagem com caixas desenhadas, ligado à UI já existente, em 2 a 3 sites nomeados (uma página por imagem, um webtoon e um leitor paginado), no Chrome e no Firefox. Verifica: fetch e `Referer`, `blob:`, Local Network Access, mixed content, mensagens entre content e background, overlay e troca de `src`.
+- Entregável: `docs/benchmark-fase-0.md`, com tabelas e decisões.
 
-**Pronto quando:** houver uma tabela de tempos por etapa e o modelo de tradução estiver escolhido. Se o tempo passar muito de ~5 s por página, revisar o plano.
+**Pronto quando:**
+- o modelo de tradução estiver escolhido;
+- as metas estiverem definidas a partir da base de comparação: recall de detecção, taxa de erro de caracteres do OCR e nota cega de 1 a 3 da tradução;
+- a latência estiver medida (p50 e p95 com o modelo carregado, partida a frio e páginas por minuto comparadas ao ritmo de leitura);
+- o esqueleto funcionar nos sites nomeados.
 
 ### Fase 1: pipeline e CLI
 
-- Origem desta fase: inglês, com OCR pelo PaddleOCR; destino de teste: pt-BR. O OCR fica atrás de uma interface por idioma, para os outros entrarem na Fase 4c sem mudar o resto.
-- Etapas com interfaces separadas, na ordem detecção → OCR → tradução → apagar o texto → escrever o texto.
-- Balões ordenados na ordem de leitura do inglês: da esquerda para a direita, de cima para baixo.
-- Apagar o texto pintando com a cor do balão.
-- Escrever o texto na horizontal, com quebra de linha e o maior tamanho de fonte que couber na caixa, usando uma fonte de HQ com licença OFL e acentos.
+- Inglês com RapidOCR; destino de teste pt-BR. OCR e tradutor atrás de interfaces, para os outros idiomas e modelos entrarem sem mexer no resto.
+- Direção de leitura como parâmetro (`ltr`, `rtl`, `strip`), separada do idioma, porque mangá traduzido para o inglês continua da direita para a esquerda.
+- Imagens altas divididas em blocos com sobreposição; tiras consecutivas juntadas para não cortar balões e divididas de volta no fim.
+- Apagar o texto pela máscara do texto, não pela caixa (a caixa apaga a borda do balão).
+- Escrever o texto na área do balão, não só na caixa do texto original, porque o português ocupa mais espaço. Fonte de HQ com licença OFL e acentos.
+- Se o JSON do LLM vier com número errado de balões, traduzir balão por balão.
 - CLI: `uv run kmoverlay translate pagina.jpg -o saida.png`.
-- Testes: layout do texto, ordem de leitura e o pipeline com um tradutor falso, que rodam sem GPU.
+- Testes com imagens sintéticas e tradutor falso, sem GPU.
 
-**Pronto quando:** a CLI traduzir as páginas de teste com resultado legível.
+**Pronto quando:** a CLI atingir as metas da Fase 0 no conjunto anotado.
 
 ### Fase 2: servidor HTTP
 
-- FastAPI com os modelos carregados uma única vez e uma fila com 1 worker de GPU.
-- Cancelar o trabalho se o cliente desconectar antes de ele começar.
-- Cache em disco.
-- Segurança: escutar em `127.0.0.1` por padrão, token obrigatório, CORS liberado só para a extensão, limite de tamanho em bytes e em pixels.
+- FastAPI com o contrato acima e os modelos carregados uma única vez.
+- Fila com 1 worker e classes de prioridade: texto > imagem visível > pré-carga. Cancela o pedido se o cliente desconectar antes de ele começar.
+- Cache por etapa com teto e LRU.
+- Segurança do item 10 dos ajustes.
 
-**Pronto quando:** um `curl` com uma imagem devolver a tradução e a segunda chamada vier do cache.
+**Pronto quando:** os testes de API passarem, incluindo os casos de erro, e a segunda chamada vier do cache.
 
-### Fase 3: extensão no PC (MVP)
+### Fase 3: extensão de imagens
 
+- Content script nos sites ligados, montando os componentes de página da UI.
+- Ler imagens de `<img>` (usando `currentSrc`, que cobre `srcset` e `<picture>`), imagem de fundo via CSS, `<image>` em SVG e `<canvas>` sem bloqueio de CORS; filtrar só imagens grandes (tamanho mínimo numa constante).
+- O content script controla a fila: `IntersectionObserver` com margem de ~1,5 tela, 1 a 2 pedidos em andamento, prioridade para o que está visível.
+- Um `runtime.Port` por pedido (desconectar cancela). O background não guarda estado em memória, porque o service worker pode ser encerrado a qualquer momento; o estado fica no IndexedDB.
+- A imagem traduzida chega ao content como data URL.
+- Overlay sem capturar cliques (`pointer-events: none`), acompanhando o tamanho (`ResizeObserver`) e as trocas de `src`/`srcset` de leitores paginados.
+- Badge do ícone com o número de páginas na fila.
+- Tiras de webtoon agrupadas antes do envio.
+- `MutationObserver` para imagens que entram por lazy-load.
+
+**Pronto quando:** os sites nomeados forem traduzidos no Chrome e no Firefox e, ao voltar, a tradução vier do cache.
+
+### Fase 4: texto da página (fecha o MVP)
+
+- **Servidor:** `POST /v1/translate-text`, com o mesmo tradutor, fila e cache.
 - **content:**
-  - Ler imagens de todas as fontes: `<img>` (usando `currentSrc`, que cobre `srcset` e `<picture>`), imagem de fundo via CSS, `<image>` em SVG e `<canvas>` (quando não estiver bloqueado por CORS).
-  - O que não puder ser lido direto vai para o modo de captura da aba (Fase 4b).
-  - Filtrar só imagens grandes (tamanho mínimo numa constante).
-  - `IntersectionObserver` com margem de cerca de 1,5 tela.
-  - Fila com prioridade (visível > próxima), processando uma imagem por vez.
-  - Cancelamento com `AbortController`.
-  - `MutationObserver` para imagens que entram por lazy-load.
-- **background:** baixa os bytes da imagem, calcula o SHA-256 e procura nesta ordem: IndexedDB → `GET` por hash no servidor → `POST`.
-- **overlay:** imagem posicionada por cima da original, acompanhando o tamanho com `ResizeObserver`, mais um indicador de carregamento e um atalho para alternar entre original e tradução.
-- **popup e opções:** ligar e desligar por site, URL do servidor, token, idioma de origem por site e idioma de destino.
-- Testes da fila e do cache com Vitest e teste manual em 2 ou 3 sites reais.
+  - Traduzir por bloco (parágrafo, item de lista, célula). As tags internas viram marcadores numerados, como `Clique <0>aqui</0> para <1>continuar</1>`.
+  - Nunca usar `innerHTML`: mover os elementos originais para a posição indicada pelo tradutor e mudar só o texto dos nós. Marcadores desconhecidos são descartados.
+  - Marcadores faltando ou trocados: tentar mais uma vez; se falhar, traduzir nó por nó.
+  - Ignorar `script`, `style`, `code`, `pre`, campos de formulário e nós já traduzidos.
+  - Pular blocos que já estão no idioma de destino, pelo atributo `lang` e por `i18n.detectLanguage` (Chrome 47+, Firefox 47+, Firefox Android 106+; confirmado).
+  - Traduzir só blocos perto da tela; `MutationObserver` para texto novo; guardar o original para alternar.
+  - Não alterar o layout; reduzir a fonte só onde a tradução estourar, se a opção estiver ligada.
+- Desligado por padrão, ligado por site.
+- O Firefox já traduz texto offline, mas só tem modelos en↔pt; os outros idiomas chegam ao português passando pelo inglês. O Chrome tem a Translator API on-device (Chrome 138+, só desktop, en→pt incluído), uma alternativa leve para o texto da página no Chrome. A vantagem da extensão é usar o mesmo modelo, glossário e cache dos balões em todos os navegadores.
 
-**Pronto quando:** ao rolar um capítulo, as páginas aparecerem traduzidas e, ao voltar, a tradução vier do cache.
+**Pronto quando:** as páginas de texto dos sites nomeados forem traduzidas mantendo o layout, os links e o negrito no meio das frases, e a tradução vier do cache ao recarregar.
 
-### Fase 3b: texto da página
+### Fase 5: outros idiomas
 
-- **Servidor:** endpoint `POST /v1/translate-text`, que usa o mesmo tradutor, glossário, fila e cache das imagens. Chave do cache: hash do texto + idioma de destino + versão do pipeline. O prompt instrui o modelo a manter os marcadores de formatação (ver abaixo).
-- **content:**
-  - Percorrer os nós de texto do DOM, ignorando `script`, `style`, `code`, `pre`, campos de formulário e nós já traduzidos.
-  - Traduzir por bloco (parágrafo, item de lista, célula), não por nó. As tags internas (`a`, `b`, `i`, `span`…) viram marcadores numerados, como `Clique <0>aqui</0> para <1>continuar</1>`, e depois da tradução voltam ao ponto indicado pelo modelo, mantendo links, negrito e estilos.
-  - Se a tradução vier com marcadores faltando ou trocados, tentar mais uma vez; se falhar de novo, traduzir nó por nó. A frase fica menos fluida, mas os links e estilos são preservados.
-  - Não alterar o layout: a extensão troca só o texto. Como opção, reduzir a fonte apenas nos elementos em que a tradução estourar o espaço.
-  - Traduzir só os blocos perto da tela (`IntersectionObserver`), com as frases de cada bloco numa única chamada.
-  - `MutationObserver` para o texto que aparece depois (scroll infinito, comentários).
-  - Guardar o texto original para alternar entre original e tradução.
-- **Opções:** ligar a tradução de texto e a de imagens separadamente, por site.
-- Testes com Vitest, em ambiente de DOM simulado: seleção dos blocos, ida e volta dos marcadores e o caminho de falha.
+- Benchmark de japonês, coreano, chinês, espanhol e russo, no mesmo formato da Fase 0.
+- OCR: manga-ocr + PyTorch para o japonês; RapidOCR para coreano, chinês, espanhol e russo.
+- Confirmar o detector em mangá, manhwa e manhua; se falhar, trocar ou combinar detectores.
+- Idioma de origem escolhido por site; detectar o idioma pela imagem antes do OCR não é confiável.
+- Destinos fora do alfabeto latino: fonte com os caracteres do idioma (ex.: família Noto, OFL) e quebra de linha por caractere em chinês e japonês.
 
-O Firefox já traduz o texto das páginas offline, com modelos locais (verificar se o par ja→pt está disponível). A vantagem de fazer na extensão é usar o mesmo modelo e glossário dos balões e ter tradução offline também no Chrome.
+**Pronto quando:** cada idioma atingir, no seu conjunto anotado, metas definidas da mesma forma que na Fase 0.
 
-**Pronto quando:** uma página com texto for traduzida mantendo o layout, os links e o negrito no meio das frases, e a tradução vier do cache ao recarregar.
+### Fase 6: qualidade
 
-### Fase 4: qualidade
-
-- LaMa só em fundos complexos.
+- LaMa por recorte nos fundos complexos.
 - Contexto da página anterior no prompt e glossário de nomes por série.
-- Configuração para traduzir ou não as onomatopeias.
-- Medir de novo e comparar com a Fase 0.
+- Opção de traduzir ou não as onomatopeias.
 
-### Fase 4b: modo de captura da aba
+**Pronto quando:** a nota cega média da tradução subir em relação à Fase 0, sem passar da meta de latência.
 
-Cobre o que não pode ser lido direto da página: canvas bloqueado por CORS, imagens embaralhadas ou fatiadas por leitores e vídeo pausado.
+### Fase 7: celular
 
-- Capturar a área visível com `captureVisibleTab`, escondendo o overlay antes da captura.
-- Servidor: o mesmo pipeline, devolvendo só `regions` (posição e texto traduzido), sem a imagem renderizada.
-- Extensão: desenhar caixas com o texto traduzido nas posições detectadas, por cima da página.
-- Traduzir só quando a rolagem parar e respeitar o limite de capturas por segundo do navegador.
-- Ativar por atalho ou automaticamente quando a leitura direta da imagem falhar.
+- Build para o Firefox Android, instalado como XPI assinado por arquivo: Configurações → Sobre o Firefox → tocar 5 vezes no logo → "Install Extension from File" (Android 10+). Para desenvolver, `web-ext run -t firefox-android` via adb.
+- Servidor acessível pela rede local ou pelo Tailscale, com token. Imagens em WebP, com o hash calculado antes da recompressão.
+
+**Pronto quando:** um capítulo dos sites nomeados for traduzido no celular pela rede local e pelo Tailscale, aproveitando o cache feito no PC.
+
+### Fase 8: captura da aba
+
+- Para o que não pode ser lido direto: canvas bloqueado por CORS, imagens embaralhadas ou fatiadas por leitores e vídeo pausado.
+- `captureVisibleTab` com o overlay escondido, no máximo 2 capturas por segundo, só quando a rolagem parar.
+- O servidor devolve só `regions`; a extensão desenha caixas com o texto traduzido nas posições.
+- Ativada pelo atalho Alt+Shift+C ou automaticamente quando a leitura direta falhar.
 
 **Pronto quando:** um leitor que desenha as páginas em `<canvas>` for traduzido pelo atalho.
 
-### Fase 4c: outros idiomas
+### Fase 9: opcional
 
-- **OCR:** Manga-OCR para o japonês; PaddleOCR para coreano, chinês, espanhol e russo (confirmar a qualidade em balões no benchmark).
-- **Detector:** confirmar que o detector escolhido na Fase 0 encontra texto em mangá, manhwa e manhua; se não encontrar, trocar ou combinar detectores.
-- **Ordem de leitura por idioma:** da direita para a esquerda no japonês e no chinês vertical; da esquerda para a direita nos demais.
-- **Webtoons:** juntar as tiras vizinhas antes da detecção, para não cortar balões entre duas imagens, e dividir o resultado de volta.
-- **Idioma de origem:** escolhido por site nas opções, com um padrão global. Detectar o idioma pela imagem antes do OCR não é confiável.
-- **Destinos fora do alfabeto latino:** fonte com os caracteres do idioma (ex.: família Noto, licença OFL) e quebra de linha por caractere em chinês e japonês.
-
-**Pronto quando:** pelo menos uma página de cada idioma de origem do conjunto de teste for traduzida com resultado legível.
-
-### Fase 5: celular
-
-- Build da extensão para o Firefox Android. Para desenvolver, `web-ext run -t firefox-android` via adb. Para uso diário, a extensão provavelmente precisa ser assinada pela Mozilla como "unlisted" (verificar).
-- Servidor acessível pela rede local ou pelo Tailscale, com token obrigatório. Enviar as imagens em WebP para reduzir a transferência.
-
-### Fase 6: opcional
-
-- Opção B do estudo (tudo no navegador), só se houver motivo.
+- Opção B do estudo (tudo no navegador), só se uma medição justificar.
 
 ## Limitações conhecidas
 
-- Nas imagens, o texto traduzido fica na mesma posição e dentro do balão, mas com uma fonte de HQ padrão, não a fonte original.
-- No modo de captura, a posição e o tamanho do texto são preservados, mas a fonte e o estilo são aproximados.
+- Nas imagens, o texto traduzido fica na posição e no balão originais, mas com uma fonte de HQ padrão, não a original.
+- Na captura da aba, a posição e o tamanho são preservados, mas a fonte e o estilo são aproximados.
+- Apps React ou Vue podem sobrescrever o texto traduzido ao renderizar de novo.
 - Vídeo em reprodução não é traduzido em tempo real nesse hardware.
-- Conteúdo com DRM aparece preto na captura e não pode ser traduzido.
+- Conteúdo com DRM aparece preto na captura.
 - A extensão só atua dentro do navegador.
-- A qualidade da tradução varia por par de idiomas. Com um modelo de 3 a 4B, pares menos comuns (ex.: russo → português) podem sair piores.
+- A qualidade varia por par de idiomas; com um modelo de 3 a 4B, pares menos comuns (ex.: russo → português) podem sair piores.
+
+## Decisões tomadas
+
+- **Pipeline próprio** seguindo o contrato acima; manga-image-translator só como referência.
+- **Licença GPL-3.0.**
+- **UI da extensão em TypeScript puro**, com as fontes Inter e Space Grotesk embutidas (OFL), sem requisições externas.
+- **Dependências aprovadas:**
+  - Servidor: FastAPI, Uvicorn, Pillow, NumPy, ONNX Runtime, RapidOCR, httpx, pytest e ruff. Depois: CTranslate2 (NLLB) e manga-ocr + PyTorch (japonês).
+  - Extensão: WXT, TypeScript, Vitest e happy-dom.
+  - Ferramenta: Ollama.
 
 ## Decisões em aberto
 
-1. **Pipeline próprio ou manga-image-translator como backend.** Recomendação: pipeline próprio seguindo o contrato da API acima, com o manga-image-translator só como referência. Usá-lo como backend entrega mais rápido, mas é pesado e dá menos controle.
-2. **Dependências a aprovar.** Servidor: FastAPI, Pillow, manga-ocr, PaddleOCR, PyTorch, Transformers (para o NLLB) e o detector de texto. Extensão: Vite ou WXT, Vitest e web-ext. Confirmar licença e manutenção de cada uma antes de adicionar.
+1. Quais 2 a 3 sites servem de teste nas Fases 0 a 4.
+2. Como instalar o Ollama: o instalador oficial pede `sudo`; extrair o binário em `~/.local` também funciona, segundo relatos (verificar o uso da GPU nesse caso).
