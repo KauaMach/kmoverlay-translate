@@ -30,8 +30,8 @@ Plano para construir a extensão de tradução de mangá descrita em [extensao-t
 3. **Cache em duas camadas.** IndexedDB no navegador e cache em disco no servidor, que o PC e o celular compartilham. A chave é o SHA-256 da imagem + o idioma de destino + a versão do pipeline. Sem a versão, uma melhoria no pipeline nunca substitui as traduções antigas.
 4. **Tradução offline com LLM.**
    - Argos: provavelmente traduz ja→pt passando pelo inglês, o que piora o resultado (verificar).
-   - NLLB: a licença é CC-BY-NC, ou seja, proíbe uso comercial.
-   - Escolha: um LLM local via Ollama que traduz a página inteira numa só chamada, com os balões numerados em ordem de leitura e resposta em JSON. Isso dá contexto ao modelo e reduz a latência.
+   - NLLB: traduz direto entre todos os idiomas do escopo, e as versões destiladas (600M e 1,3B parâmetros) ocupam menos VRAM que um LLM de 3 a 4B. Por outro lado, traduz frase por frase, sem o contexto da página. A licença (CC-BY-NC) proíbe apenas o uso comercial, o que não afeta o uso pessoal; só vira problema se o projeto for distribuído comercialmente.
+   - Escolha: um LLM local via Ollama que traduz a página inteira numa só chamada, com os balões numerados em ordem de leitura e resposta em JSON. Isso dá contexto ao modelo e reduz a latência. O NLLB é testado na Fase 0 como opção mais leve.
 5. **Limite de 6 GB de VRAM.** Não cabe um LLM de 7B junto com detecção, OCR e LaMa.
    - Começar com um modelo de 3 a 4B quantizado e medir.
    - Apagar o texto pintando com a cor do balão por padrão; usar o LaMa só quando o fundo não for liso.
@@ -88,6 +88,7 @@ O campo `regions` permite depurar o resultado, alternar entre original e traduç
 
 - Rodar `git init` e preencher a seção "Projeto" do `AGENTS.md`.
 - Instalar o Ollama e testar 2 ou 3 modelos de 3 a 4B.
+- Testar o NLLB (versões destiladas de 600M e 1,3B) como opção mais leve, comparando qualidade, tempo e VRAM com os LLMs nas mesmas falas. Verificar também se ele preserva os marcadores de formatação da Fase 3b.
 - Montar um conjunto de 15 a 20 páginas de teste em inglês (balão branco, fundo complexo, onomatopeias e texto em caixa alta), mais algumas páginas de cada um dos outros idiomas, incluindo texto vertical em japonês.
 - Medir tempo e VRAM de cada etapa e rodar o manga-image-translator nas mesmas páginas.
 - Testar o detector e o PaddleOCR em todas as páginas, começando pelas em inglês. O comic-text-detector parece ter sido feito principalmente para mangá; confirmar que funciona bem em HQ ocidental.
@@ -201,4 +202,4 @@ Cobre o que não pode ser lido direto da página: canvas bloqueado por CORS, ima
 ## Decisões em aberto
 
 1. **Pipeline próprio ou manga-image-translator como backend.** Recomendação: pipeline próprio seguindo o contrato da API acima, com o manga-image-translator só como referência. Usá-lo como backend entrega mais rápido, mas é pesado e dá menos controle.
-2. **Dependências a aprovar.** Servidor: FastAPI, Pillow, manga-ocr, PaddleOCR, PyTorch e o detector de texto. Extensão: Vite ou WXT, Vitest e web-ext. Confirmar licença e manutenção de cada uma antes de adicionar.
+2. **Dependências a aprovar.** Servidor: FastAPI, Pillow, manga-ocr, PaddleOCR, PyTorch, Transformers (para o NLLB) e o detector de texto. Extensão: Vite ou WXT, Vitest e web-ext. Confirmar licença e manutenção de cada uma antes de adicionar.
