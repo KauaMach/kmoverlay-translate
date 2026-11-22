@@ -100,7 +100,8 @@ Todos os endpoints exigem `Authorization: Bearer <token>`.
 POST /v1/translate        multipart: images[] (uma ou várias, em ordem, para tiras) + options (JSON)
   options = { source_lang, target_lang, reading_direction: ltr | rtl | strip,
               output: image | regions, priority: visible | prefetch, series_id? }
-  → { results: [{ image_sha256, image_webp_base64?,
+  → { pipeline_version,
+      results: [{ image_sha256, image_webp_base64?,
                   regions: [{ polygon, source_text, translated_text }] }],
       timings_ms }
 POST /v1/lookup           JSON: { image_sha256s, options } → mesmo formato ou 404 (sem reenviar a imagem)
@@ -111,8 +112,9 @@ GET  /v1/health           → { status, gpu_name, models_loaded }
 
 - `polygon` usa pixels da imagem original; o cliente converte para a escala exibida.
 - `output: regions` devolve só as posições e os textos, sem a imagem renderizada (usado na captura da aba).
-- Erros: `401` (token), `413` (imagem grande demais), `422` (entrada inválida), `429` (fila cheia) e `503` (modelo ou Ollama indisponível), sempre com corpo `{ error: { code, message } }`.
-- O servidor sobe com `uv run kmoverlay serve`, o comando que o popup mostra quando não encontra o servidor.
+- Erros: `401` (token), `413` (imagem grande demais), `422` (entrada inválida), `429` (fila cheia) e `503` (modelo ou Ollama indisponível), sempre com corpo `{ error: { code, message } }`. Um cabeçalho `Host` desconhecido recebe `400`, sem corpo nesse formato.
+- `priority` só ordena o trabalho e fica fora da chave do cache; `output` faz parte dela.
+- O servidor sobe com `uv run kmoverlay serve`, o comando que o popup mostra quando não encontra o servidor. O token vem de `KMOVERLAY_TOKEN` no `server/.env` (modelo em `server/.env.example`).
 
 ## Interface
 
@@ -138,6 +140,11 @@ A UI da extensão foi desenhada no canvas "KMOverlay Translate — UX/UI" e impl
   - Teste de ir/não ir de VRAM com tudo carregado ao mesmo tempo.
 - **Esqueleto ponta a ponta:** servidor falso que devolve a imagem com caixas desenhadas, ligado à UI já existente, em 2 a 3 sites nomeados (uma página por imagem, um webtoon e um leitor paginado), no Chrome e no Firefox. Verifica: fetch e `Referer`, `blob:`, Local Network Access, mixed content, mensagens entre content e background, overlay e troca de `src`.
 - Entregável: `docs/benchmark-fase-0.md`, com tabelas e decisões.
+
+**Andamento (22/11/2026):** o esqueleto existe.
+- Servidor: contrato da API (`/v1/health`, `/v1/translate`, `/v1/lookup`) com token, checagem de `Host`, limites de tamanho e cache em memória; pipeline de demonstração que só marca as imagens; leitor de demonstração em `/demo`, com HQs sintéticas geradas no código.
+- Extensão: content script registrado só nos sites ligados (a permissão é pedida no popup), fila por proximidade da tela, camada isolada sobre cada imagem com os estados do design, Alt+T, badge com a fila e progresso no popup. O background baixa as imagens, consulta `/v1/lookup` e envia a `/v1/translate`.
+- Conferido no Firefox (sem extensão instalada, com as APIs simuladas) que as camadas ficam sobre as imagens reais. Falta: testar a extensão instalada no Chrome e no Firefox, os sites reais (decisão em aberto), `Referer`, `blob:`, Local Network Access e mixed content; e o benchmark de modelos.
 
 **Pronto quando:**
 - o modelo de tradução estiver escolhido;
